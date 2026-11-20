@@ -35,6 +35,10 @@ export function createApp({ dataDir = join(ROOT, 'data'), toolkit = createToolki
     await writeFile(temp, JSON.stringify(project, null, 2));
     await rename(temp, join(dir, 'project.json'));
   }
+  async function checkUnchanged(project) {
+    const saved = await loadProject(project.id);
+    if (pendingWrites.has(project.id) || saved.revision !== project.revision) throw new InputError('The saved project changed. Reload before confirming this operation.', 409);
+  }
   async function lockedProject(id, action) {
     if (pendingWrites.has(id) || (activeJob && jobs.get(activeJob)?.projectId === id)) throw new InputError('This project is busy. Wait for the current operation.', 409);
     pendingWrites.add(id);
@@ -52,7 +56,7 @@ export function createApp({ dataDir = join(ROOT, 'data'), toolkit = createToolki
     return accountPromise;
   }
   function startJob(kind, projectId, run) {
-    if (activeJob || signingOut) throw new InputError('Another sign-in or publishing operation is running.', 409);
+    if (activeJob || signingOut) throw new InputError('Another sign-in, publishing or sharing operation is running.', 409);
     const job = { id: randomUUID(), kind, projectId, status: 'running', startedAt: new Date().toISOString(), logs: [], result: null, error: null };
     jobs.set(job.id, job); activeJob = job.id;
     while (jobs.size > 30) jobs.delete(jobs.keys().next().value);
@@ -65,13 +69,22 @@ export function createApp({ dataDir = join(ROOT, 'data'), toolkit = createToolki
     }).finally(() => { job.finishedAt = new Date().toISOString(); activeJob = null; });
     return job;
   }
-  async function existingEnv(id) {
-    try { return parseEnvironment(await readFile(join(projectPath(id), 'workspace', 'env', '.env.dev'), 'utf8')); }
+  function workspacePath(id, scope = 'personal') {
+    if (!['personal', 'shared'].includes(scope)) throw new InputError('Invalid deployment scope.');
+    return join(projectPath(id), scope === 'personal' ? 'workspace' : 'workspace-shared');
+  }
+  async function existingEnv(id, scope = 'personal') {
+    try {
+      const env = parseEnvironment(await readFile(join(workspacePath(id, scope), 'env', '.env.dev'), 'utf8'));
+      if (env.AGENT_SCOPE && env.AGENT_SCOPE !== scope) throw new InputError('Workspace scope does not match the selected deployment.', 409);
+      return env;
+    }
     catch (error) { if (error.code !== 'ENOENT') throw error; return {}; }
   }
   async function writeWorkspace(project) {
-    const workspace = join(projectPath(project.id), 'workspace');
-    const files = generateFiles(project, await existingEnv(project.id));
+    const scope = project.deploymentScope ?? 'personal';
+    const workspace = workspacePath(project.id, scope);
+    const files = generateFiles(project, await existingEnv(project.id, scope));
     const skillsDir = join(workspace, 'appPackage', 'skills');
     let oldSkills = [];
     try { oldSkills = await readdir(skillsDir, { withFileTypes: true }); }
@@ -128,7 +141,7 @@ export function createApp({ dataDir = join(ROOT, 'data'), toolkit = createToolki
         res.setHeader('Content-Security-Policy', `default-src 'self'; script-src 'self' 'nonce-${nonce}'; style-src 'self' 'nonce-${nonce}'; img-src 'self' blob: data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'`);
         res.writeHead(200, { 'Content-Type': type }); return res.end(content);
       }
-      if (url.pathname === '/api/bootstrap' && req.method === 'GET') return json(res, 200, { csrfToken, publishingScope: 'personal' });
+      if (url.pathname === '/api/bootstrap' && req.method === 'GET') return json(res, 200, { csrfToken, publishingScopes: ['personal', 'shared'] });
       if (!url.pathname.startsWith('/api/')) throw new InputError('Not found.', 404);
       if (req.headers['x-studio-token'] !== csrfToken) throw new InputError('Reload the application to establish a local session.', 403);
       if (url.pathname === '/api/auth/status' && req.method === 'GET') return json(res, 200, await accountStatus());
@@ -166,7 +179,10 @@ export function createApp({ dataDir = join(ROOT, 'data'), toolkit = createToolki
         return json(res, 200, job);
       }
       if (!(await accountStatus()).signedIn) throw new InputError('Sign in to Microsoft 365 first.', 401);
-      if (url.pathname === '/api/sources/parse' && req.method === 'POST') return json(res, 200, parsePowerBiUrl((await body(req)).url));
+      if (url.pathname === '/api/sources/parse' && req.method === 'POST') {
+        const source = await body(req);
+        return json(res, 200, parsePowerBiUrl(source.url, source.type));
+      }
       if (url.pathname === '/api/projects' && req.method === 'GET') {
         await mkdir(projectsDir, { recursive: true });
         const ids = (await readdir(projectsDir, { withFileTypes: true })).filter(d => d.isDirectory() && UUID.test(d.name)).map(d => d.name);
@@ -178,7 +194,7 @@ export function createApp({ dataDir = join(ROOT, 'data'), toolkit = createToolki
         const project = newProject(); await storeProject(project);
         return json(res, 201, project);
       }
-      const match = /^\/api\/projects\/([0-9a-f-]+)(?:\/(files|check|download|package|publish))?$/.exec(url.pathname);
+      const match = /^\/api\/projects\/([0-9a-f-]+)(?:\/(files|check|download|package|publish|sharing))?$/.exec(url.pathname);
       if (!match) throw new InputError('Not found.', 404);
       const [, id, action] = match;
       if (!action && req.method === 'GET') return json(res, 200, await loadProject(id));
@@ -197,11 +213,11 @@ export function createApp({ dataDir = join(ROOT, 'data'), toolkit = createToolki
       if (action === 'files' && req.method === 'GET') {
         const check = validateProject(project);
         if (!check.valid) return json(res, 200, { ...check, files: [] });
-        const files = generateFiles(project, await existingEnv(id));
+        const files = generateFiles(project, await existingEnv(id, project.deploymentScope));
         return json(res, 200, { ...check, files: Object.entries(files).map(([path, value]) => ({ path, binary: typeof value !== 'string', content: typeof value === 'string' ? value : `[Generated PNG icon, ${value.length} bytes]` })) });
       }
       if (action === 'download' && req.method === 'GET') {
-        const files = generateFiles(project, await existingEnv(id));
+        const files = generateFiles(project, await existingEnv(id, project.deploymentScope));
         const zip = zipSync(Object.fromEntries(Object.entries(files).map(([name, value]) => [name, typeof value === 'string' ? strToU8(value) : value])));
         res.writeHead(200, { 'Content-Type': 'application/zip', 'Content-Disposition': 'attachment; filename="analytics-agent-source.zip"' }); return res.end(zip);
       }
@@ -214,18 +230,23 @@ export function createApp({ dataDir = join(ROOT, 'data'), toolkit = createToolki
       }
       if (action === 'publish' && req.method === 'POST') {
         const input = await body(req);
-        if (input.confirmPersonal !== true) throw new InputError('Confirm personal publishing before deployment.');
+        const scope = project.deploymentScope ?? 'personal';
+        if (!(input.confirmPublish === true && input.scope === scope && input.revision === project.revision)) throw new InputError('Confirm publishing for the saved deployment mode and revision.');
         const check = validateProject(project, { publish: true });
         if (!check.valid) throw new InputError(check.errors.join(' '));
         if (pendingWrites.has(id)) throw new InputError('Wait for the draft to finish saving.', 409);
+        const account = await accountStatus(true);
+        if (!account.signedIn) throw new InputError('Sign in to Microsoft 365 first.', 401);
+        if (project.deployment?.account && project.deployment.account.toLowerCase() !== account.account.toLowerCase()) throw new InputError('Sign in with the account that published this deployment.', 403);
+        await checkUnchanged(project);
         return json(res, 202, startJob('publish', id, async log => {
-          log(`Publishing "${project.name}" for the currently signed-in Microsoft 365 account. Scope: personal.`);
+          log(`Publishing "${project.name}" for the currently signed-in Microsoft 365 account. Scope: ${scope}.`);
           const workspace = await writeWorkspace(project);
           log('Generated manifests, instructions, skill files and project source.');
-          log('Running Microsoft Toolkit provisioning, official package validation and personal Copilot deployment.');
+          log(`Running Microsoft Toolkit provisioning, official package validation and ${scope} Copilot deployment.`);
           const result = await toolkit(['provision', '--env', 'dev', '--folder', workspace, '--interactive', 'false'], { cwd: workspace, onOutput: log });
           if (result.code !== 0) throw new Error(result.timedOut ? 'Publishing timed out. Inspect the Toolkit log and deployment state before retrying.' : 'Microsoft Toolkit could not complete publishing. Inspect the log; provisioned identities are preserved for retries.');
-          const environment = await existingEnv(id);
+          const environment = await existingEnv(id, scope);
           if (!environment.M365_TITLE_ID) throw new Error('Toolkit finished without a Copilot Title ID. Deployment could not be confirmed.');
           const packageId = randomUUID();
           const publishedDir = join(projectPath(id), 'published');
@@ -236,13 +257,55 @@ export function createApp({ dataDir = join(ROOT, 'data'), toolkit = createToolki
             agentId: `${environment.M365_TITLE_ID}.analyticsAgent`,
             teamsAppId: environment.TEAMS_APP_ID,
             publishedAt: new Date().toISOString(), version: project.version,
-            shareLink: safeCopilotLink(environment.SHARE_LINK),
-            scope: 'personal', packageId
+            shareLink: safeCopilotLink(environment.SHARE_LINK, scope === 'shared' ? null : undefined),
+            scope, packageId, account: account.account,
+            sharing: project.deployment?.sharing ?? { recipients: [], updatedAt: null }
           };
+          project.deployments = { ...project.deployments, [scope]: deployment };
           project.deployment = deployment; project.revision++; project.updatedAt = deployment.publishedAt;
           await storeProject(project);
           log(`Published agent identity: ${deployment.agentId}`);
-          log('Personal provisioning completed. Copilot availability can take time to propagate.');
+          log(`${scope === 'shared' ? 'Shareable' : 'Personal'} provisioning completed. Copilot availability can take time to propagate.`);
+          if (scope === 'shared') log('Grant access separately using Manage sharing. Shareable publishing is not organization-wide catalog deployment.');
+          return { deployment };
+        }));
+      }
+      if (action === 'sharing' && req.method === 'POST') {
+        const input = await body(req), deployment = project.deployment;
+        if (input.confirmSharing !== true) throw new InputError('Confirm the sharing change.');
+        if (!['add', 'remove'].includes(input.operation)) throw new InputError('Choose Add access or Remove access.');
+        if (project.deploymentScope !== 'shared' || deployment?.scope !== 'shared') throw new InputError('Publish a shareable deployment before managing access.', 409);
+        if (input.titleId !== deployment.titleId || input.revision !== project.revision) throw new InputError('The deployment changed. Reload before managing sharing.', 409);
+        if (pendingWrites.has(id)) throw new InputError('Wait for the draft to finish saving.', 409);
+        if (typeof input.emails !== 'string' || input.emails.length > 6000) throw new InputError('Enter up to 20 user or group email addresses.');
+        const recipients = [...new Set(input.emails.split(/[,;\r\n]+/).map(email => email.trim().toLowerCase()).filter(Boolean))];
+        if (!recipients.length || recipients.length > 20 || recipients.some(email => email.length > 254 || !/^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+$/.test(email))) throw new InputError('Enter 1 to 20 valid user or group email addresses, separated by commas or new lines.');
+        const account = await accountStatus(true);
+        if (!account.signedIn) throw new InputError('Sign in to Microsoft 365 first.', 401);
+        if (!deployment.account || deployment.account.toLowerCase() !== account.account.toLowerCase()) throw new InputError('Sign in with the account that published this deployment.', 403);
+        await checkUnchanged(project);
+        return json(res, 202, startJob(input.operation === 'add' ? 'share' : 'unshare', id, async log => {
+          const workspace = workspacePath(id, 'shared');
+          const environment = await existingEnv(id, 'shared');
+          if (environment.M365_TITLE_ID !== deployment.titleId || environment.TEAMS_APP_ID !== deployment.teamsAppId) throw new Error('The saved workspace does not match the published deployment. Publish an update before changing access.');
+          const args = input.operation === 'add'
+            ? ['share', '--scope', 'users', '--email', recipients.join(',')]
+            : ['share', 'remove', '--users', recipients.join(',')];
+          log(`${input.operation === 'add' ? 'Granting' : 'Removing'} chat access for ${recipients.length} recipient(s). This does not change Power BI permissions or grant edit ownership.`);
+          const result = await toolkit([...args, '--env', 'dev', '--folder', workspace, '--interactive', 'false'], { cwd: workspace, onOutput: log });
+          if (result.code !== 0) throw new Error(result.timedOut
+            ? 'Sharing timed out. The service may have applied changes; check access before retrying.'
+            : 'Toolkit could not confirm the sharing change. Check the log and tenant policies; access may have partially changed.');
+          const known = new Set(deployment.sharing?.recipients ?? []);
+          for (const recipient of recipients) {
+            if (input.operation === 'add') known.add(recipient);
+            else known.delete(recipient);
+          }
+          deployment.sharing = { recipients: [...known].sort(), updatedAt: new Date().toISOString() };
+          project.deployments = { ...project.deployments, shared: deployment };
+          project.revision++; project.updatedAt = deployment.sharing.updatedAt;
+          await storeProject(project);
+          log('Toolkit confirmed the sharing change. Recipients still need their own Power BI access and applicable licenses.');
           return { deployment };
         }));
       }
@@ -257,12 +320,13 @@ export function createApp({ dataDir = join(ROOT, 'data'), toolkit = createToolki
   return { server, accountStatus, dataDir };
 }
 
-function safeCopilotLink(value) {
+function safeCopilotLink(value, fallback = 'https://m365.cloud.microsoft/chat/') {
   try {
     const url = new URL(value);
-    if (url.protocol === 'https:' && ['m365.cloud.microsoft', 'copilot.cloud.microsoft', 'www.microsoft365.com'].includes(url.hostname)) return url.href;
+    if (url.protocol === 'https:' && !url.username && !url.password && !url.port &&
+        ['m365.cloud.microsoft', 'copilot.cloud.microsoft', 'www.microsoft365.com', 'm365.cloud.microsoft.com', 'www.office.com'].includes(url.hostname)) return url.href;
   } catch {}
-  return 'https://m365.cloud.microsoft/chat/';
+  return fallback;
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

@@ -34,6 +34,27 @@ test('rejects unsafe substitutions and generated skill paths without allowing id
   assert.equal(normalized.deployment, null);
 });
 
+test('requires a type for bare GUIDs and generates report or model routing without inventing links', () => {
+  for (const type of ['Report', 'Semantic model']) {
+    assert.deepEqual(parsePowerBiUrl(` ${reportId} `, type), { artifactId: reportId, workspaceId: null, type, url: null });
+    const project = validProject();
+    project.reports[0] = { ...project.reports[0], url: reportId, type };
+    const normalized = normalizeProject(project, project);
+    assert.equal(normalized.reports[0].type, type);
+    assert.equal(validateProject(normalized).valid, true);
+    const instructions = generateFiles(normalized)['appPackage/agent_instructions.md'];
+    assert.ok(instructions.includes(`| ${type} | ${reportId} |`));
+    assert.doesNotMatch(instructions, /Source link for/);
+    assert.match(instructions, /use citations returned by AskPowerBI/);
+    project.reports.push(validProject().reports[0]);
+    assert.match(validateProject(project).errors.join(), /duplicates/);
+  }
+  for (const type of [undefined, '', 'Other']) assert.throws(() => parsePowerBiUrl(reportId, type), /Choose Report or Semantic model/);
+  assert.throws(() => parsePowerBiUrl('not-a-guid', 'Report'), /GUID/);
+  assert.throws(() => normalizeProject({ ...validProject(), reports: [{ ...validProject().reports[0], type: 'Other' }] }), /source type/);
+  assert.equal(parsePowerBiUrl(validProject().reports[0].url, 'Semantic model').type, 'Report', 'Links must determine their own type.');
+});
+
 test('checks duplicates, required publisher URLs and final instruction budget', () => {
   const project = validProject();
   assert.equal(validateProject(project, { publish: true }).valid, true);
@@ -43,7 +64,7 @@ test('checks duplicates, required publisher URLs and final instruction budget', 
   assert.match(validateProject({ ...project, skills: [...project.skills, ...project.skills] }).errors.join(), /duplicated/);
 });
 
-test('generates real source routing, skill references and a personal-only lifecycle while excluding secrets', () => {
+test('generates real source routing, skill references and a personal-by-default lifecycle while excluding secrets', () => {
   const project = validProject();
   const files = generateFiles(project, { M365_TITLE_ID: titleId, TEAMS_APP_ID: reportId, SECRET: 'never-export', ACCESS_TOKEN: 'never-export' });
   const agent = JSON.parse(files['appPackage/declarativeAgent.json']);
@@ -58,6 +79,24 @@ test('generates real source routing, skill references and a personal-only lifecy
   assert.doesNotMatch(files['m365agents.yml'], /scope: tenant|teamsApp\/publishAppPackage/);
   project.skills[0].recipes = '';
   assert.equal(generateFiles(project)['appPackage/skills/sales-review/references/dax-recipes.md'], undefined);
+});
+
+test('preserves server-owned personal and shared identities when switching modes, including legacy projects', () => {
+  const personal = { scope: 'personal', titleId, packageId: reportId };
+  const legacy = { ...validProject(), deployment: personal };
+  delete legacy.deploymentScope; delete legacy.deployments;
+  const shared = normalizeProject({ ...legacy, deploymentScope: 'shared', deployments: { shared: { titleId: 'injected' } } }, legacy);
+  assert.equal(shared.deployment, null);
+  assert.deepEqual(shared.deployments.personal, personal);
+  const back = normalizeProject({ ...shared, deploymentScope: 'personal' }, shared);
+  assert.deepEqual(back.deployment, personal);
+  assert.throws(() => normalizeProject({ ...legacy, deploymentScope: 'tenant' }, legacy), /Personal or Shareable/);
+  assert.equal(validateProject({ ...legacy, deploymentScope: 'tenant' }).valid, false);
+  const files = generateFiles(shared);
+  assert.match(files['m365agents.yml'], /scope: shared/);
+  assert.match(files['env/.env.dev'], /AGENT_SCOPE=shared/);
+  assert.doesNotMatch(files['env/.env.dev'], new RegExp(titleId));
+  assert.throws(() => generateFiles(shared, { AGENT_SCOPE: 'personal', M365_TITLE_ID: titleId }), /different deployment mode/);
 });
 
 test('recognizes dotted account names and strips tokens from Toolkit logs', () => {

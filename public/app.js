@@ -55,7 +55,7 @@ const state = {
   hosting: { mode: 'local' }, library: { kind: 'packs', query: '', category: 'All', selected: null, creating: false }
 };
 let toastTimer, saveTimer, savePromise;
-const isPublishing = () => state.job?.status === 'running' && state.job.kind === 'publish' && state.job.projectId === state.project?.id;
+const isPublishing = () => state.job?.status === 'running' && state.job.kind !== 'login' && state.job.projectId === state.project?.id;
 const storageText = () => state.hosting.mode === 'hosted' ? 'Saved to your account' : 'Saved on this computer';
 const tabs = [
   ['reports', 'source', 'Data sources'], ['overview', 'grid', 'Agent details'],
@@ -139,11 +139,11 @@ function render() {
   app.innerHTML = `<div class="studio"><header class="appbar">${brand()}<div class="appbar-center">${connectionBadge()}</div><div class="actions"><button class="btn quiet help-launch" data-action="agent-guide" aria-label="How it works">${icon('info')} How it works</button><button class="btn quiet library-launch" data-library="packs">${icon('book')} Template library</button>${accountTools()}</div></header>
     <div class="studio-body"><aside class="sidebar"><button class="nav-button home-button ${!p ? 'active' : ''}" data-action="home">${icon('folder')} My agents</button><button class="btn quiet full sidebar-create" data-action="new">${icon('plus')} New agent</button>
       ${p ? `<div class="side-label">Project configuration</div><nav aria-label="Studio navigation">${tabs.map(([key, image, title]) => `<button class="nav-button ${state.tab === key ? 'active' : ''}" data-tab="${key}" ${state.tab === key ? 'aria-current="page"' : ''}><span class="nav-step">${icon(image)}</span><span>${title}</span>${key === 'skills' && p.skills.length ? `<span class="count">${p.skills.length}</span>` : ''}</button>`).join('')}</nav>` : `<div class="side-label">Templates</div><nav aria-label="Template shortcuts">${[['packs', 'book', 'Starter packs'], ['skills', 'skill', 'Skills'], ['profiles', 'pen', 'Behavior presets']].map(([kind, image, title]) => `<button class="nav-button" data-library="${kind}">${icon(image)} ${title}</button>`).join('')}</nav>`}
-      <div class="sidebar-note"><strong>${icon('shield')} Personal publishing</strong><p>Your agents publish to your own Copilot.</p><a href="https://learn.microsoft.com/en-us/plugins/prerequisites#agent-capabilities-and-licensing-models" target="_blank" rel="noopener noreferrer">Permissions & licensing ${icon('arrow')}</a></div>
+      <div class="sidebar-note"><strong>${icon('shield')} Your publishing choice</strong><p>Keep an agent personal or publish a shareable version for selected people.</p><a href="https://learn.microsoft.com/en-us/plugins/prerequisites#agent-capabilities-and-licensing-models" target="_blank" rel="noopener noreferrer">Permissions & licensing ${icon('arrow')}</a></div>
     </aside><div class="workspace"><div class="workspace-toolbar ${p ? '' : 'home-toolbar'}"><div class="breadcrumbs">${p ? `<button class="text-btn" data-action="home">My agents</button>${icon('chevron')}<strong>${esc(p.name || 'Untitled agent')}</strong>` : '<span>Home</span>'}</div><div class="actions">${state.job?.status === 'running' ? `<button class="btn small" data-action="show-job"><span class="spinner"></span> Operation running</button>` : ''}${p ? `<span class="save-status" id="save-status" role="status">${saveLabel()}</span><button class="btn small" data-action="save" id="save-button">${icon('save')} Save draft</button>` : ''}</div></div>
       <main class="content ${p ? 'editor-content' : 'home-content'}">${p ? renderEditor() : renderDashboard()}</main><footer class="workspace-footer"><span>Agent Studio · Community project</span><span>${state.hosting.mode === 'hosted' ? 'Personal workspace' : 'Saved on this computer.'}</span></footer></div></div></div>`;
   if (isPublishing()) {
-    for (const control of app.querySelectorAll('input,textarea,[data-remove-report],[data-remove-skill],[data-template],[data-action="add-report"],[data-action="add-skill"]')) control.disabled = true;
+    for (const control of app.querySelectorAll('input,textarea,select,[data-remove-report],[data-remove-skill],[data-template],[data-action="add-report"],[data-action="add-skill"],[data-action="manage-sharing"],[data-action="review-publish"]')) control.disabled = true;
   }
   updateSaveStatus();
   const nav = app.querySelector('nav[aria-label="Studio navigation"]');
@@ -159,7 +159,7 @@ function renderDashboard() {
   return `<header class="workspace-intro"><div class="intro-copy"><span class="eyebrow">Personal workspace</span><h1>Agents</h1><p>Create and manage declarative agents<br>for Microsoft 365 Copilot.</p><button class="btn primary" data-action="new">${icon('plus')} Create an agent</button>${fabricCredit()}</div>${notebookScene()}</header>
     <div class="workspace-guide-link"><span>${icon('info')} A declarative agent configures Copilot with your sources, instructions and skills.</span><button class="text-btn" data-action="agent-guide">How it works ${icon('arrow')}</button></div>
     <section class="projects-section" aria-labelledby="projects-title"><div class="section-heading"><h2 id="projects-title">Projects <span class="counter">${state.projects.length}</span></h2><span class="section-note">${storageText()}</span></div>
-    ${state.projects.length ? `<div class="project-list">${state.projects.map(p => `<article class="project-row tone-source"><span class="agent-document">${icon('file')}</span><div class="project-copy"><h3><button class="project-title" data-open="${esc(p.id)}">${esc(p.name)}</button></h3><p>${esc(p.description)}</p><div class="project-meta"><span>${p.reportCount} ${p.reportCount === 1 ? 'source' : 'sources'}</span><span>${p.skillCount} ${p.skillCount === 1 ? 'skill' : 'skills'}</span></div></div><div class="project-status"><span class="status-label ${p.deployment ? 'published' : ''}"><i></i>${p.deployment ? 'Published · Personal' : 'Draft'}</span><time datetime="${esc(p.updatedAt)}">Updated ${esc(new Date(p.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }))}</time></div><button class="btn small quiet project-open" data-open="${esc(p.id)}" aria-label="Open workspace for ${esc(p.name)}">${icon('arrow')}</button></article>`).join('')}</div>` : `<div class="first-agent-note"><span class="feature-icon tone-source">${icon('file')}</span><div><strong>No projects yet</strong><p>Create a project or select a template below.</p></div><button class="text-btn" data-action="new">Create project ${icon('arrow')}</button></div>`}</section>
+    ${state.projects.length ? `<div class="project-list">${state.projects.map(p => `<article class="project-row tone-source"><span class="agent-document">${icon('file')}</span><div class="project-copy"><h3><button class="project-title" data-open="${esc(p.id)}">${esc(p.name)}</button></h3><p>${esc(p.description)}</p><div class="project-meta"><span>${p.reportCount} ${p.reportCount === 1 ? 'source' : 'sources'}</span><span>${p.skillCount} ${p.skillCount === 1 ? 'skill' : 'skills'}</span></div></div><div class="project-status"><span class="status-label ${p.deployment ? 'published' : ''}"><i></i>${p.deployment ? `Published · ${p.deployment.scope === 'shared' ? 'Shareable' : 'Personal'}` : 'Draft'}</span><time datetime="${esc(p.updatedAt)}">Updated ${esc(new Date(p.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }))}</time></div><button class="btn small quiet project-open" data-open="${esc(p.id)}" aria-label="Open workspace for ${esc(p.name)}">${icon('arrow')}</button></article>`).join('')}</div>` : `<div class="first-agent-note"><span class="feature-icon tone-source">${icon('file')}</span><div><strong>No projects yet</strong><p>Create a project or select a template below.</p></div><button class="text-btn" data-action="new">Create project ${icon('arrow')}</button></div>`}</section>
     <section class="starter-section"><div class="section-heading"><div><h2>Templates</h2><p>Preconfigured instructions and skills. Editable before publishing.</p></div><button class="text-btn" data-library="packs">View all templates ${icon('arrow')}</button></div>
     <div class="starter-grid">${PACKS.slice(0, 3).map(pack => `<button class="starter-card tone-${packTone(pack.id)}" data-create-pack="${pack.id}"><span class="starter-cover"><span class="cover-page">${icon(pack.icon)}<i></i><i></i></span><span class="cover-caption">${pack.category}</span></span><span class="starter-title">${pack.title}</span><span class="starter-copy">${pack.summary}</span><span class="starter-meta">${pack.skills.length} skills ${icon('arrow')}</span></button>`).join('')}</div></section>`;
 }
@@ -183,9 +183,9 @@ function setupAside() {
 }
 function renderEditor() {
   const p = state.project;
-  const banner = isPublishing() ? `<div class="notice accent publishing-banner"><span class="spinner"></span><span>Publishing this saved version. Editing resumes when the operation finishes.</span><button class="text-btn" data-action="show-job">View progress</button></div>` : '';
-  if (state.tab === 'reports') return `${banner}${heading(1, 'Data sources', 'Add Power BI report or semantic model URLs. Fabric IQ provides the data answers.', `<button class="btn" data-action="add-report">${icon('plus')} Add source</button>`)}
-    <div class="editor-layout"><div>${p.reports.length ? p.reports.map(renderReport).join('') : `<div class="empty-state source-empty"><span class="feature-icon large">${icon('source')}</span><h2>No data sources</h2><p>Copy the full report or semantic model URL from Power BI.</p><button class="btn primary" data-action="add-report">${icon('plus')} Add Power BI source</button></div>`}<div class="notice section-space">${icon('info')}<span>URL checks verify structure only, not data access or model contents. The agent uses the current user’s Power BI permissions.</span></div></div>${setupAside()}</div>
+  const banner = isPublishing() ? `<div class="notice accent publishing-banner"><span class="spinner"></span><span>A publishing or sharing operation is running. Editing resumes when it finishes.</span><button class="text-btn" data-action="show-job">View progress</button></div>` : '';
+  if (state.tab === 'reports') return `${banner}${heading(1, 'Data sources', 'Add Power BI report or semantic model links or GUIDs. Fabric IQ provides the data answers.', `<button class="btn" data-action="add-report">${icon('plus')} Add source</button>`)}
+    <div class="editor-layout"><div>${p.reports.length ? p.reports.map(renderReport).join('') : `<div class="empty-state source-empty"><span class="feature-icon large">${icon('source')}</span><h2>No data sources</h2><p>Paste a report or semantic model link or GUID from Power BI.</p><button class="btn primary" data-action="add-report">${icon('plus')} Add Power BI source</button></div>`}<div class="notice section-space">${icon('info')}<span>Link and GUID checks verify structure only, not data access or model contents. The agent uses the current user’s Power BI permissions.</span></div></div>${setupAside()}</div>
     ${stepFooter(null, 'overview', 'Name your agent')}`;
   if (state.tab === 'overview') return `${banner}${heading(2, 'Agent details', 'Set the name and description displayed in Microsoft 365 Copilot.')}
     <div class="editor-layout"><div><section class="card"><div class="card-header"><h2>Display information</h2><p>Shown in Microsoft 365 Copilot.</p></div><div class="card-body">${field('Agent name', 'name', p.name, { max: 30, help: 'Up to 30 characters.' })}${field('Description', 'description', p.description, { rows: 3, max: 128, help: 'Describe the supported tasks. Up to 128 characters.' })}<details class="disclosure"><summary>Package version</summary><div class="section-space">${field('Package version', 'version', p.version, { placeholder: '1.0.0', help: 'Use major.minor.patch format. Increment for updates.' })}</div></details></div></section>
@@ -201,18 +201,24 @@ function renderEditor() {
     ${p.skills.length ? `<div class="skills-list">${p.skills.map(renderSkill).join('')}</div>` : `<div class="starter-grid skill-suggestions">${SKILLS.filter(s => ['metric-definitions', 'rankings-and-share', 'grounded-charting'].includes(s.id)).map(skill => `<article class="card suggestion-card"><span class="feature-icon">${icon(skill.icon)}</span><h3>${skill.title}</h3><p>${skill.summary}</p><button class="btn small" data-add-skill="${skill.id}">${icon('plus')} Add skill</button></article>`).join('')}</div>`}
     ${stepFooter('instructions', 'files', 'Review and publish')}`;
   const checklist = readiness();
-  return `${banner}${heading(5, 'Review and publish', 'Review generated files, export the project, or publish to your account.', `<button class="btn" data-action="download">${icon('download')} Export source</button><button class="btn primary" data-action="review-publish">${icon('rocket')} ${p.deployment ? 'Publish update' : 'Publish to Copilot'}</button>`)}
-    ${p.deployment ? `<div class="deployment-card card"><span class="feature-icon success">${icon('check')}</span><div><h3>Published personally · v${esc(p.deployment.version)}</h3><p>Microsoft accepted this deployment. Discovery and runtime availability depend on account entitlements, tenant policies and propagation.</p><details class="deployment-identity"><summary>Deployment identity</summary><code>${esc(p.deployment.agentId)}</code></details></div><div class="actions"><a class="btn" href="${esc(p.deployment.shareLink)}" target="_blank" rel="noopener noreferrer">Open Copilot ${icon('arrow')}</a><button class="btn" data-action="download-package">${icon('download')} App package</button></div></div>` : ''}
+  const shared = p.deploymentScope === 'shared';
+  return `${banner}${heading(5, 'Review and publish', 'Review generated files, choose a deployment mode, and publish to Copilot.', `<button class="btn" data-action="download">${icon('download')} Export source</button><button class="btn primary" data-action="review-publish">${icon('rocket')} ${p.deployment ? 'Publish update' : 'Publish to Copilot'}</button>`)}
+    <section class="card card-body section-space"><div class="field"><label for="deployment-scope">Deployment mode</label><select id="deployment-scope" data-deployment-scope><option value="personal" ${!shared ? 'selected' : ''}>Personal — just me</option><option value="shared" ${shared ? 'selected' : ''}>Shareable — selected people</option></select><span class="help">Each mode has a separate published agent and identity. Switching the draft mode does not delete, unshare or update the other deployment.</span></div><p class="small">${shared ? 'Publish a shareable version, then explicitly grant chat access in Manage sharing. This is not organization-wide catalog publishing.' : 'Only your signed-in account receives this personal deployment.'}</p></section>
+    ${p.deployment ? `<div class="deployment-card card"><span class="feature-icon success">${icon('check')}</span><div><h3>${shared ? 'Published shareable' : 'Published personally'} · v${esc(p.deployment.version)}</h3><p>Microsoft accepted this deployment. Discovery and runtime availability depend on account entitlements, tenant policies and propagation.</p><details class="deployment-identity"><summary>Deployment identity</summary><code>${esc(p.deployment.agentId)}</code></details></div><div class="actions"><a class="btn" href="${esc(p.deployment.shareLink || 'https://m365.cloud.microsoft/chat/')}" target="_blank" rel="noopener noreferrer">Open Copilot ${icon('arrow')}</a>${shared ? `<button class="btn" data-action="manage-sharing">${icon('people')} Manage sharing</button>` : ''}<button class="btn" data-action="download-package">${icon('download')} App package</button></div></div>` : ''}
     <div class="review-grid">${[['source', `${p.reports.length} sources`, p.reports.map(r => r.name).join(', ') || 'Add at least one source', 'reports'], ['pen', 'Core behavior', `${p.instructions.length.toLocaleString()} characters · source routing added automatically`, 'instructions'], ['skill', `${p.skills.length} skills`, p.skills.map(s => s.name).join(', ') || 'Optional · add a playbook for repeated tasks', 'skills']].map(([i, title, copy, tab]) => `<button class="review-tile card" data-tab="${tab}">${icon(i)}<strong>${esc(title)}</strong><span>${esc(copy)}</span>${icon('chevron')}</button>`).join('')}</div>
-    <div class="notice section-space">${icon('shield')}<div><strong>Personal publishing, not organization-wide deployment.</strong><p>The Toolkit validates the package and creates or updates this project’s personal agent. Publishing does not grant Copilot or Power BI licenses.</p></div></div>
+    <div class="notice section-space">${icon('shield')}<div><strong>${shared ? 'Shareable publishing, with explicit access grants.' : 'Personal publishing, not organization-wide deployment.'}</strong><p>Publishing does not grant Power BI data access or licenses. Sharing uses each recipient’s permissions. Organization-wide catalog distribution is a separate admin-approved process.</p></div></div>
     ${state.files ? renderFiles() : `<section class="file-preview-prompt card"><span class="feature-icon">${icon('file')}</span><div><h3>Generated files</h3><p>Inspect manifests, instructions, skill files and the deployment workflow.</p></div><button class="btn" data-action="preview">${icon('file')} Generate file preview</button></section>`}
     ${!checklist[0].done ? '<p class="small muted section-space">Start by adding a Power BI source before exporting or publishing.</p>' : ''}`;
 }
+function sourceKey(report) {
+  return JSON.stringify([report.url, report.type ?? '']);
+}
 function renderReport(report, index) {
-  const parsed = state.parsed[report.url], error = state.sourceErrors[report.url];
+  const key = sourceKey(report), parsed = state.parsed[key], error = state.sourceErrors[key];
   return `<section class="card source-card"><div class="card-header spread"><div class="row"><span class="source-number">${index + 1}</span><div><h3>${esc(report.name || `Power BI source ${index + 1}`)}</h3><p>Report or semantic model</p></div></div><button class="btn icon-only quiet danger" data-remove-report="${index}" aria-label="Remove source ${index + 1}">${icon('trash')}</button></div><div class="card-body">
-    <div class="field"><label for="report-url-${index}">Power BI link</label><input id="report-url-${index}" data-report="${index}" data-key="url" type="url" value="${esc(report.url)}" placeholder="https://app.powerbi.com/groups/…/reports/…" maxlength="2000" ${error ? 'aria-invalid="true"' : ''}><span class="help">Paste the full report URL, not a short sharing link. We’ll check it when you leave this field.</span>
-    ${parsed ? `<div class="parsed-source">${icon('check')}<span>${esc(parsed.type)} ID extracted<code>${esc(parsed.artifactId)}</code></span></div>` : error ? `<span class="field-error">${icon('info')}${esc(error)}</span>` : ''}<div><button class="text-btn small" data-parse-report="${index}">${icon('link')} Check link structure</button></div></div>
+    <div class="field"><label for="report-url-${index}">Report or semantic model link or GUID</label><input id="report-url-${index}" data-report="${index}" data-key="url" type="text" value="${esc(report.url)}" placeholder="Paste a full Power BI link or artifact GUID" maxlength="2000" ${error ? 'aria-invalid="true"' : ''}><span class="help">Paste a full report or semantic model link (not a short sharing link), or its GUID. For a GUID, choose the source type below. We’ll check it when you leave this field.</span>
+    ${parsed ? `<div class="parsed-source">${icon('check')}<span>${esc(parsed.type)} ID extracted<code>${esc(parsed.artifactId)}</code></span></div>` : error ? `<span class="field-error">${icon('info')}${esc(error)}</span>` : ''}<div><button class="text-btn small" data-parse-report="${index}">${icon('link')} Check source structure</button></div></div>
+    <div class="field"><label for="report-type-${index}">Source type for GUID</label><select id="report-type-${index}" data-report="${index}" data-key="type">${[['', 'Detect from link'], ['Report', 'Report'], ['Semantic model', 'Semantic model']].map(([value, label]) => `<option value="${value}" ${(report.type ?? '') === value ? 'selected' : ''}>${label}</option>`).join('')}</select><span class="help">Required for a bare GUID. Links always determine their own source type.</span></div>
     <div class="field"><label for="report-name-${index}">Source name</label><input id="report-name-${index}" data-report="${index}" data-key="name" value="${esc(report.name)}" placeholder="e.g. AdventureWorks Sales" maxlength="120"></div>
     <div class="field"><label for="report-context-${index}">Description &amp; source-specific guidance</label><textarea id="report-context-${index}" data-report="${index}" data-key="description" rows="3" maxlength="2000" placeholder="${esc(PACKS.find(p => p.id === state.activePack)?.guidance ?? PACKS[0].guidance)}">${esc(report.description)}</textarea><span class="help">Helpful context: business domain, preferred measures, date rules and common ambiguities. Only include verified definitions.</span></div></div></section>`;
 }
@@ -341,12 +347,12 @@ async function openProject(id) {
 async function parseReport(index) {
   const report = state.project?.reports[index];
   if (!report || !report.url.trim()) return;
-  const projectId = state.project.id, url = report.url;
-  if (state.parsed[url]) return;
+  const projectId = state.project.id, url = report.url, type = report.type, key = sourceKey(report);
+  if (state.parsed[key]) return;
   try {
-    const parsed = await api('/sources/parse', { method: 'POST', body: { url } });
-    state.parsed[url] = parsed; delete state.sourceErrors[url];
-  } catch (error) { state.sourceErrors[url] = error.message; }
+    const parsed = await api('/sources/parse', { method: 'POST', body: { url, type } });
+    state.parsed[key] = parsed; delete state.sourceErrors[key];
+  } catch (error) { state.sourceErrors[key] = error.message; }
   if (state.project?.id === projectId && state.tab === 'reports' && !document.activeElement?.matches('[data-report]')) render();
 }
 async function preview() {
@@ -361,22 +367,40 @@ async function download(kind) {
 }
 function reviewPublish(check) {
   const p = state.project, dialog = $('#publish-dialog');
-  dialog.innerHTML = `<div class="dialog-head"><div><span class="eyebrow">Personal deployment</span><h2 id="publish-title">Publish to your Copilot</h2><p>The saved project will be validated and published for this account.</p></div><button class="btn icon-only quiet" data-close-dialog="publish-dialog" aria-label="Close">${icon('close')}</button></div><div class="dialog-body">
-    <div class="publish-summary"><span class="feature-icon large">${icon('chart')}</span><div><h3>${esc(p.name)}</h3><p>${esc(p.description)}</p></div></div><div class="summary-row"><span>Account</span><strong>${esc(state.account)}</strong></div><div class="summary-row"><span>Audience</span><strong>Only you · Personal</strong></div><div class="summary-row"><span>Package</span><strong>v${esc(p.version)} · ${p.reports.length} sources · ${p.skills.length} skills</strong></div>
+  const shared = p.deploymentScope === 'shared';
+  dialog.dataset.projectId = p.id; dialog.dataset.scope = p.deploymentScope ?? 'personal'; dialog.dataset.revision = p.revision;
+  dialog.innerHTML = `<div class="dialog-head"><div><span class="eyebrow">${shared ? 'Shareable' : 'Personal'} deployment</span><h2 id="publish-title">Publish to your Copilot</h2><p>The saved project will be validated and published for this account.</p></div><button class="btn icon-only quiet" data-close-dialog="publish-dialog" aria-label="Close">${icon('close')}</button></div><div class="dialog-body">
+    <div class="publish-summary"><span class="feature-icon large">${icon('chart')}</span><div><h3>${esc(p.name)}</h3><p>${esc(p.description)}</p></div></div><div class="summary-row"><span>Account</span><strong>${esc(state.account)}</strong></div><div class="summary-row"><span>Audience</span><strong>${shared ? 'Shareable · Grant recipients separately' : 'Only you · Personal'}</strong></div><div class="summary-row"><span>Package</span><strong>v${esc(p.version)} · ${p.reports.length} sources · ${p.skills.length} skills</strong></div>
+    ${shared ? `<div class="notice section-space">${icon('people')}<span>This creates or updates the separate shareable deployment. Existing recipient access is preserved on updates. Use Manage sharing after publishing to grant or remove chat access.</span></div>` : ''}
     <details class="publisher-review section-space" ${check.errors.some(e => /Publisher|Privacy|Terms|publisher/.test(e)) ? 'open' : ''}><summary>Publisher details <span class="counter">Required by Microsoft 365</span></summary><div class="section-space">${publisherFields('review')}<label class="checkbox-label"><input id="remember-publisher" type="checkbox"> Remember these publisher details for new agents in this browser</label></div></details>
     ${check.valid ? `<div class="notice success section-space">${icon('check')}<span>Local checks passed. Microsoft Toolkit will run official package validation next.</span></div>` : `<ul class="check-list errors">${check.errors.map(e => `<li>${icon('info')}<span>${esc(e)}</span></li>`).join('')}</ul>`}
     <details class="disclosure section-space"><summary>Availability and permissions</summary><p class="small muted section-space">Publishing does not grant Microsoft 365 Copilot, Fabric IQ or Power BI entitlements. Tenant policies and propagation can affect discovery and use. Source links are structurally checked, not validated against live data.</p></details>
-    </div><div class="dialog-footer"><button class="btn" data-action="recheck-publish">Save &amp; recheck</button><button class="btn primary" data-action="confirm-publish" ${check.valid ? '' : 'disabled'}>${icon('rocket')} Confirm personal publish</button></div>`;
+    </div><div class="dialog-footer"><button class="btn" data-action="recheck-publish">Save &amp; recheck</button><button class="btn primary" data-action="confirm-publish" ${check.valid ? '' : 'disabled'}>${icon('rocket')} Confirm ${shared ? 'shareable' : 'personal'} publish</button></div>`;
   if (!dialog.open) dialog.showModal();
+}
+function manageSharing() {
+  const p = state.project, deployment = p.deployment, dialog = $('#sharing-dialog');
+  if (p.deploymentScope !== 'shared' || deployment?.scope !== 'shared') throw new Error('Publish a shareable deployment first.');
+  dialog.dataset.projectId = p.id; dialog.dataset.titleId = deployment.titleId; dialog.dataset.revision = p.revision;
+  const sharing = deployment.sharing ?? { recipients: [] };
+  dialog.innerHTML = `<div class="dialog-head"><div><span class="eyebrow">Shareable deployment</span><h2 id="sharing-title">Manage sharing</h2><p>${esc(p.name)} · Chat access only, not edit ownership.</p></div><button class="btn icon-only quiet" data-close-dialog="sharing-dialog" aria-label="Close sharing">${icon('close')}</button></div><div class="dialog-body">
+    <div class="notice">${icon('shield')}<span>Recipients need their own Power BI access and applicable licenses. Tenant sharing policies still apply. Copying the link alone does not grant access.</span></div>
+    ${deployment.shareLink ? `<div class="field section-space"><label for="sharing-link">Agent sharing link</label><input id="sharing-link" readonly value="${esc(deployment.shareLink)}"><button class="btn small" data-action="copy-sharing-link">${icon('link')} Copy sharing link</button></div>` : '<p class="small section-space">Microsoft did not return a supported sharing link. Access can still be managed; use Copilot to locate the agent.</p>'}
+    <div class="field section-space"><label for="sharing-operation">Access change</label><select id="sharing-operation"><option value="add">Add chat access</option><option value="remove">Remove chat access</option></select></div>
+    <div class="field"><label for="sharing-emails">User or group emails</label><textarea id="sharing-emails" rows="3" maxlength="6000" placeholder="Enter up to 20 email addresses, separated by commas or new lines"></textarea></div>
+    <details class="disclosure section-space"><summary>Recipients recorded by Studio (${sharing.recipients.length})</summary><p class="small section-space">Only successful changes made through this Studio are recorded here. This is not a live access list; changes elsewhere and group membership are not synchronized.</p><p class="small section-space">${sharing.recipients.length ? sharing.recipients.map(esc).join('<br>') : 'No recipients recorded yet.'}</p></details>
+    </div><div class="dialog-footer"><button class="btn" data-close-dialog="sharing-dialog">Cancel</button><button class="btn primary" data-action="confirm-sharing">Confirm access change</button></div>`;
+  dialog.showModal();
 }
 function renderJob() {
   const job = state.job;
   if (!job) return;
   const running = job.status === 'running', success = job.status === 'succeeded', dialog = $('#operation-dialog');
-  dialog.innerHTML = `<div class="dialog-head"><div><h2 id="operation-title">${job.kind === 'login' ? 'Microsoft 365 sign-in' : 'Publishing your agent'}</h2><p>${running ? 'You can leave this panel open or keep working.' : 'Operation finished.'}</p></div><button class="btn icon-only quiet" data-close-dialog="operation-dialog" aria-label="Close operation details">${icon('close')}</button></div><div class="dialog-body">
-    <div class="operation-status ${job.status === 'failed' ? 'failed' : ''}">${running ? '<span class="spinner"></span>' : icon(success ? 'check' : 'info')}<span>${running ? job.kind === 'login' ? 'Complete sign-in in Microsoft’s browser window' : 'Microsoft Toolkit is validating and publishing…' : success ? job.kind === 'login' ? 'Connected to Microsoft 365' : 'Personal deployment completed' : 'Operation needs attention'}</span></div>
+  const sharing = ['share', 'unshare'].includes(job.kind);
+  dialog.innerHTML = `<div class="dialog-head"><div><h2 id="operation-title">${job.kind === 'login' ? 'Microsoft 365 sign-in' : sharing ? 'Updating agent access' : 'Publishing your agent'}</h2><p>${running ? 'You can leave this panel open or keep working.' : 'Operation finished.'}</p></div><button class="btn icon-only quiet" data-close-dialog="operation-dialog" aria-label="Close operation details">${icon('close')}</button></div><div class="dialog-body">
+    <div class="operation-status ${job.status === 'failed' ? 'failed' : ''}">${running ? '<span class="spinner"></span>' : icon(success ? 'check' : 'info')}<span>${running ? job.kind === 'login' ? 'Complete sign-in in Microsoft’s browser window' : sharing ? 'Microsoft Toolkit is updating recipient access…' : 'Microsoft Toolkit is validating and publishing…' : success ? job.kind === 'login' ? 'Connected to Microsoft 365' : sharing ? 'Sharing change completed' : `${job.result?.deployment?.scope === 'shared' ? 'Shareable' : 'Personal'} deployment completed` : 'Operation needs attention'}</span></div>
     ${job.error ? `<div class="notice error">${icon('info')}<span>${esc(job.error)}</span></div>` : ''}<details class="operation-details" ${job.status === 'failed' ? 'open' : ''}><summary>Technical log</summary><pre class="job-log" tabindex="0">${esc(job.logs.join('\n') || 'Starting…')}</pre></details>
-    ${success && job.kind === 'publish' ? `<div class="notice success section-space">${icon('check')}<span>Microsoft accepted the deployment. Search All agents in Copilot if it is not in the sidebar yet. Availability still depends on licensing and tenant policies.</span></div>` : ''}</div><div class="dialog-footer">${success && job.result?.deployment ? `<a class="btn" href="${esc(job.result.deployment.shareLink)}" target="_blank" rel="noopener noreferrer">Open Copilot ${icon('arrow')}</a>` : ''}<button class="btn ${running ? '' : 'primary'}" data-close-dialog="operation-dialog">${running ? 'Keep working' : 'Done'}</button></div>`;
+    ${success && job.kind === 'publish' ? `<div class="notice success section-space">${icon('check')}<span>Microsoft accepted the deployment. Search All agents in Copilot if it is not in the sidebar yet.${job.result?.deployment?.scope === 'shared' ? ' Use Manage sharing to grant access to selected people.' : ''} Availability still depends on licensing and tenant policies.</span></div>` : ''}</div><div class="dialog-footer">${success && job.result?.deployment ? `<a class="btn" href="${esc(job.result.deployment.shareLink || 'https://m365.cloud.microsoft/chat/')}" target="_blank" rel="noopener noreferrer">Open Copilot ${icon('arrow')}</a>` : ''}<button class="btn ${running ? '' : 'primary'}" data-close-dialog="operation-dialog">${running ? 'Keep working' : 'Done'}</button></div>`;
 }
 async function monitorJob(job) {
   state.job = job; sessionStorage.setItem('studio-job', job.id);
@@ -420,6 +444,7 @@ document.addEventListener('input', event => {
   else return;
   if ($('#publish-dialog').open) $('#publish-dialog [data-action="confirm-publish"]').disabled = true;
   markChanged();
+  if (el.dataset.report !== undefined && el.dataset.key === 'type') void parseReport(+el.dataset.report);
 });
 document.addEventListener('focusout', event => {
   const el = event.target;
@@ -428,7 +453,8 @@ document.addEventListener('focusout', event => {
     const value = normalizeHttps(el.value);
     if (value !== el.value) { el.value = value; state.project.developer[el.dataset.field.split('.')[1]] = value; markChanged(); }
   }
-  if (el.dataset.report !== undefined && el.dataset.key === 'url') {
+  if (el.dataset.report !== undefined && ['url', 'type'].includes(el.dataset.key)) {
+    if (el.dataset.key === 'type') { void parseReport(+el.dataset.report); return; }
     const report = state.project.reports[+el.dataset.report], value = normalizeHttps(el.value);
     if (value !== report.url) { report.url = value; el.value = value; markChanged(); }
     void parseReport(+el.dataset.report);
@@ -508,15 +534,36 @@ document.addEventListener('click', event => {
       case 'recheck-publish':
         rememberPublisher(); await save(); reviewPublish(await api(`/projects/${state.project.id}/check`)); break;
       case 'confirm-publish': {
-        rememberPublisher(); await save(); $('#publish-dialog').close();
-        const job = await api(`/projects/${state.project.id}/publish`, { method: 'POST', body: { confirmPersonal: true } });
+        const dialog = $('#publish-dialog'), p = state.project;
+        if (dialog.dataset.projectId !== p.id || dialog.dataset.scope !== (p.deploymentScope ?? 'personal') || +dialog.dataset.revision !== p.revision || state.dirty) throw new Error('Save and recheck this deployment before confirming.');
+        rememberPublisher(); dialog.close();
+        const job = await api(`/projects/${p.id}/publish`, { method: 'POST', body: { confirmPublish: true, scope: p.deploymentScope ?? 'personal', revision: p.revision } });
         await monitorJob(job); render(); break;
+      }
+      case 'manage-sharing': await save(); manageSharing(); break;
+      case 'copy-sharing-link':
+        await navigator.clipboard.writeText($('#sharing-link').value); toast('Sharing link copied. Grant recipient access separately.'); break;
+      case 'confirm-sharing': {
+        const dialog = $('#sharing-dialog'), p = state.project;
+        if (dialog.dataset.projectId !== p.id || +dialog.dataset.revision !== p.revision || state.dirty) throw new Error('The saved project changed. Close and reopen Manage sharing.');
+        const emails = $('#sharing-emails').value.trim(), operation = $('#sharing-operation').value;
+        if (!emails) throw new Error('Enter at least one recipient email address.');
+        const job = await api(`/projects/${p.id}/sharing`, { method: 'POST', body: { confirmSharing: true, operation, emails, titleId: dialog.dataset.titleId, revision: p.revision } });
+        dialog.close(); await monitorJob(job); render(); break;
       }
       case 'show-job': renderJob(); if (!$('#operation-dialog').open) $('#operation-dialog').showModal(); break;
     }
   });
 });
 document.addEventListener('change', event => {
+  if (event.target.dataset.deploymentScope !== undefined) {
+    if (!state.project || isPublishing()) return;
+    const p = state.project;
+    if (p.deployment) { p.deployments ??= {}; p.deployments[p.deployment.scope ?? 'personal'] = p.deployment; }
+    p.deploymentScope = event.target.value;
+    p.deployment = p.deployments?.[p.deploymentScope] ?? null;
+    markChanged(); render(); return;
+  }
   if (event.target.dataset.libraryCategory !== undefined) {
     state.library.category = event.target.value; $('#library-results').innerHTML = libraryResults(); return;
   }

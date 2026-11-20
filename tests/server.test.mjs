@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import { readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { unzipSync, strFromU8 } from 'fflate';
-import { testApp, validProject, titleId } from './fixtures.mjs';
+import { testApp, validProject, titleId, sharedTitleId, reportId } from './fixtures.mjs';
+
+const publishConfirmation = project => ({ confirmPublish: true, scope: project.deploymentScope ?? 'personal', revision: project.revision });
 
 async function savedProject(app) {
   const created = await app.json('/projects', { method: 'POST', body: {} });
@@ -59,13 +61,32 @@ test('persists drafts, prevents lost updates, and exports previewed source witho
   assert.equal((await app.json('/projects'))[0].id, project.id);
 });
 
+test('parses typed GUIDs and preserves semantic model routing through save and export', async t => {
+  const app = await testApp(); t.after(app.close);
+  assert.equal((await app.request('/sources/parse', { method: 'POST', body: { url: reportId } })).status, 400);
+  for (const type of ['Report', 'Semantic model']) {
+    const parsed = await app.json('/sources/parse', { method: 'POST', body: { url: reportId, type } });
+    assert.equal(parsed.artifactId, reportId);
+    assert.equal(parsed.type, type);
+  }
+  const project = await savedProject(app);
+  project.reports[0] = { ...project.reports[0], url: reportId, type: 'Semantic model' };
+  await app.json(`/projects/${project.id}`, { method: 'PUT', body: project });
+  const saved = await app.json(`/projects/${project.id}`);
+  assert.equal(saved.reports[0].url, reportId);
+  assert.equal(saved.reports[0].type, 'Semantic model');
+  const preview = await app.json(`/projects/${project.id}/files`);
+  assert.equal(preview.valid, true);
+  assert.ok(preview.files.find(file => file.path === 'appPackage/agent_instructions.md').content.includes(`| Semantic model | ${reportId} |`));
+});
+
 test('publishes only with confirmation, locks the active draft, preserves identities and last successful package', async t => {
   const app = await testApp(); t.after(app.close);
   let project = await savedProject(app);
   assert.equal((await app.request(`/projects/${project.id}/publish`, { method: 'POST', body: {} })).status, 400);
   let release;
   app.state.hold = new Promise(resolve => { release = resolve; });
-  const job = await app.json(`/projects/${project.id}/publish`, { method: 'POST', body: { confirmPersonal: true } });
+  const job = await app.json(`/projects/${project.id}/publish`, { method: 'POST', body: publishConfirmation(project) });
   assert.equal((await app.request(`/projects/${project.id}`, { method: 'PUT', body: project })).status, 409);
   assert.equal((await app.request('/auth/logout', { method: 'POST', body: {} })).status, 409);
   release(); app.state.hold = null;
@@ -77,10 +98,96 @@ test('publishes only with confirmation, locks the active draft, preserves identi
   project.skills = []; project.name = 'Updated sales analyst';
   project = await app.json(`/projects/${project.id}`, { method: 'PUT', body: project });
   app.state.failPublish = true;
-  const failedJob = await app.json(`/projects/${project.id}/publish`, { method: 'POST', body: { confirmPersonal: true } });
+  const failedJob = await app.json(`/projects/${project.id}/publish`, { method: 'POST', body: publishConfirmation(project) });
   assert.equal((await app.waitForJob(failedJob.id)).status, 'failed');
   assert.equal(app.state.environments[1].M365_TITLE_ID, titleId);
   assert.deepEqual(Buffer.from(await (await app.request(`/projects/${project.id}/package`)).arrayBuffer()), originalPackage);
   await assert.rejects(stat(join(app.dataDir, 'projects', project.id, 'workspace', 'appPackage', 'skills', 'sales-review')), { code: 'ENOENT' });
   assert.equal(strFromU8(unzipSync(originalPackage)['test-marker.txt']), 'Sales analyst');
+});
+
+test('keeps deployment identities, workspaces and packages separate when switching scopes', async t => {
+  const app = await testApp(); t.after(app.close);
+  let project = await savedProject(app);
+  async function publishSaved() {
+    const job = await app.json(`/projects/${project.id}/publish`, { method: 'POST', body: publishConfirmation(project) });
+    const result = await app.waitForJob(job.id);
+    assert.equal(result.status, 'succeeded', result.error);
+    project = await app.json(`/projects/${project.id}`);
+  }
+  await publishSaved();
+  const personal = project.deployment;
+  project = await app.json(`/projects/${project.id}`, { method: 'PUT', body: { ...project, deploymentScope: 'shared' } });
+  assert.equal(project.deployment, null);
+  assert.equal((await app.request(`/projects/${project.id}/package`)).status, 409);
+  assert.equal((await app.request(`/projects/${project.id}/publish`, { method: 'POST', body: { ...publishConfirmation(project), scope: 'personal' } })).status, 400);
+  const preview = await app.json(`/projects/${project.id}/files`);
+  assert.match(preview.files.find(file => file.path === 'env/.env.dev').content, /M365_TITLE_ID=\n/);
+  await publishSaved();
+  assert.equal(project.deployment.titleId, sharedTitleId);
+  assert.notEqual(project.deployment.teamsAppId, personal.teamsAppId);
+  assert.deepEqual(project.deployments.personal, personal);
+  assert.equal(app.state.environments[1].AGENT_SCOPE, 'shared');
+  assert.equal(app.state.environments[1].TEAMS_APP_ID, '');
+  await publishSaved();
+  assert.equal(app.state.environments[2].M365_TITLE_ID, sharedTitleId);
+  const shared = project.deployment;
+  project = await app.json(`/projects/${project.id}`, { method: 'PUT', body: { ...project, deploymentScope: 'personal' } });
+  assert.deepEqual(project.deployment, personal);
+  assert.deepEqual(project.deployments.shared, shared);
+  await publishSaved();
+  assert.equal(app.state.environments[3].M365_TITLE_ID, titleId);
+  assert.equal(app.state.environments[3].AGENT_SCOPE, 'personal');
+  assert.equal(app.state.calls.some(args => args[0] === 'share'), false, 'Changing modes and publishing must never grant access.');
+});
+
+test('sharing requires confirmation and a current shared deployment; grants and removes chat access without publishing', async t => {
+  const app = await testApp(); t.after(app.close);
+  let project = await savedProject(app);
+  const path = `/projects/${project.id}/sharing`;
+  const input = { confirmSharing: true, operation: 'add', emails: 'Person@contoso.com,\nteam@contoso.com,person@contoso.com', titleId: sharedTitleId };
+  assert.equal((await app.request(path, { method: 'POST', body: { ...input, revision: project.revision } })).status, 409);
+  project = await app.json(`/projects/${project.id}`, { method: 'PUT', body: { ...project, deploymentScope: 'shared' } });
+  const published = await app.json(`/projects/${project.id}/publish`, { method: 'POST', body: publishConfirmation(project) });
+  assert.equal((await app.waitForJob(published.id)).status, 'succeeded');
+  project = await app.json(`/projects/${project.id}`);
+  for (const override of [
+    { confirmSharing: false }, { operation: 'tenant' }, { emails: '--scope tenant' },
+    { emails: Array.from({ length: 21 }, (_, i) => `person${i}@contoso.com`).join(',') }
+  ]) assert.equal((await app.request(path, { method: 'POST', body: { ...input, revision: project.revision, ...override } })).status, 400);
+  assert.equal((await app.request(path, { method: 'POST', body: { ...input, revision: project.revision - 1 } })).status, 409);
+  assert.equal((await app.request(path, { method: 'POST', body: { ...input, revision: project.revision, titleId } })).status, 409);
+  assert.equal(app.state.calls.some(args => args[0] === 'share'), false);
+  let release;
+  app.state.hold = new Promise(resolve => { release = resolve; });
+  const grant = await app.json(path, { method: 'POST', body: { ...input, revision: project.revision } });
+  assert.equal((await app.request(`/projects/${project.id}`, { method: 'PUT', body: project })).status, 409);
+  assert.equal((await app.request('/auth/logout', { method: 'POST', body: {} })).status, 409);
+  release(); app.state.hold = null;
+  assert.equal((await app.waitForJob(grant.id)).status, 'succeeded');
+  project = await app.json(`/projects/${project.id}`);
+  assert.deepEqual(project.deployment.sharing.recipients, ['person@contoso.com', 'team@contoso.com']);
+  const workspace = join(app.dataDir, 'projects', project.id, 'workspace-shared');
+  assert.deepEqual(app.state.calls.find(args => args[0] === 'share'), ['share', '--scope', 'users', '--email', 'person@contoso.com,team@contoso.com', '--env', 'dev', '--folder', workspace, '--interactive', 'false']);
+  app.state.failSharing = true;
+  const failed = await app.json(path, { method: 'POST', body: { ...input, operation: 'remove', emails: 'person@contoso.com', revision: project.revision } });
+  const failure = await app.waitForJob(failed.id);
+  assert.equal(failure.status, 'failed');
+  assert.match(failure.logs.join(), /Sharing blocked by test policy/);
+  assert.match(failure.error, /partially changed/);
+  assert.deepEqual((await app.json(`/projects/${project.id}`)).deployment.sharing, project.deployment.sharing);
+  app.state.failSharing = false;
+  const remove = await app.json(path, { method: 'POST', body: { ...input, operation: 'remove', emails: 'person@contoso.com', revision: project.revision } });
+  assert.equal((await app.waitForJob(remove.id)).status, 'succeeded');
+  project = await app.json(`/projects/${project.id}`);
+  assert.deepEqual(project.deployment.sharing.recipients, ['team@contoso.com']);
+  assert.ok(app.state.calls.some(args => args[0] === 'share' && args[1] === 'remove' && args[2] === '--users'));
+  const revision = project.revision;
+  const update = await app.json(`/projects/${project.id}/publish`, { method: 'POST', body: publishConfirmation(project) });
+  assert.equal((await app.waitForJob(update.id)).status, 'succeeded');
+  project = await app.json(`/projects/${project.id}`);
+  assert.ok(project.revision > revision);
+  assert.deepEqual(project.deployment.sharing.recipients, ['team@contoso.com'], 'Shared publishing updates must preserve recipient tracking.');
+  app.state.account = 'other@contoso.com';
+  assert.equal((await app.request(path, { method: 'POST', body: { ...input, revision: project.revision } })).status, 403);
 });

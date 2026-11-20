@@ -8,6 +8,7 @@ import { newProject, parseEnvironment } from '../lib/generator.mjs';
 export const reportId = '11111111-2222-4333-8444-555555555555';
 export const workspaceId = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
 export const titleId = 'U_12345678-1234-4234-8234-123456789012';
+export const sharedTitleId = 'U_87654321-4321-4321-8321-210987654321';
 
 export function validProject() {
   return {
@@ -19,26 +20,33 @@ export function validProject() {
 }
 
 export function fakeToolkit({ signedIn = true } = {}) {
-  const state = { signedIn, calls: [], failPublish: false, hold: null, environments: [] };
+  const state = { signedIn, account: 'maker.name@contoso.com', calls: [], failPublish: false, failSharing: false, hold: null, environments: [] };
   const run = async (args, { onOutput = () => {} } = {}) => {
     state.calls.push(args);
     if (args[0] === 'auth') {
       if (args[1] === 'login') state.signedIn = true;
       if (args[1] === 'logout') state.signedIn = false;
-      return { code: 0, stdout: state.signedIn ? 'Your Microsoft 365 account is: maker.name@contoso.com.\n' : 'You are not signed in.', stderr: '' };
+      return { code: 0, stdout: state.signedIn ? `Your Microsoft 365 account is: ${state.account}.\n` : 'You are not signed in.', stderr: '' };
+    }
+    if (args[0] === 'share') {
+      if (state.hold) await state.hold;
+      onOutput(state.failSharing ? 'Sharing blocked by test policy.' : 'Test sharing change completed.');
+      return { code: state.failSharing ? 1 : 0, stdout: state.failSharing ? '' : 'Test sharing change completed.', stderr: state.failSharing ? 'Sharing blocked by test policy.' : '' };
     }
     if (args[0] !== 'provision') throw new Error('Unexpected Toolkit command in test.');
     const workspace = args[args.indexOf('--folder') + 1];
     const envPath = join(workspace, 'env', '.env.dev');
-    state.environments.push(parseEnvironment(await readFile(envPath, 'utf8')));
+    const env = parseEnvironment(await readFile(envPath, 'utf8'));
+    state.environments.push(env);
     onOutput('Test-double Toolkit output; not a real cloud deployment.');
     if (state.hold) await state.hold;
     await mkdir(join(workspace, 'appPackage', 'build'), { recursive: true });
     const name = JSON.parse(await readFile(join(workspace, 'appPackage', 'declarativeAgent.json'), 'utf8')).name;
     await writeFile(join(workspace, 'appPackage', 'build', 'appPackage.dev.zip'), zipSync({ 'test-marker.txt': strToU8(name) }));
     if (state.failPublish) return { code: 1, stdout: '', stderr: 'Test failure.' };
-    await writeFile(envPath, `${await readFile(envPath, 'utf8')}\nTEAMS_APP_ID=99999999-8888-4777-8666-555555555555\nM365_TITLE_ID=${titleId}\nSHARE_LINK=https://m365.cloud.microsoft/chat/\n`);
-    return { code: 0, stdout: 'Test personal deployment completed.', stderr: '' };
+    const shared = env.AGENT_SCOPE === 'shared';
+    await writeFile(envPath, `${await readFile(envPath, 'utf8')}\nTEAMS_APP_ID=${shared ? '88888888-7777-4666-8555-444444444444' : '99999999-8888-4777-8666-555555555555'}\nM365_TITLE_ID=${shared ? sharedTitleId : titleId}\nM365_APP_ID=${shared ? 'shared-test-app' : 'personal-test-app'}\nSHARE_LINK=https://m365.cloud.microsoft/${shared ? 'apps/?templatedAppId=shared-test-app' : 'chat/'}\n`);
+    return { code: 0, stdout: 'Test deployment completed.', stderr: '' };
   };
   return { state, run };
 }

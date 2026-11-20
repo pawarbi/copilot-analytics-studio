@@ -11,7 +11,10 @@
     "test:schema": "node tests/schema.mjs"
   },
   "dependencies": {
+    "@azure/msal-node": "6.0.1",
     "@microsoft/m365agentstoolkit-cli": "1.1.19",
+    "@microsoft/teamsfx-api": "0.24.4",
+    "@microsoft/teamsfx-core": "3.1.5",
     "fflate": "^0.8.2"
   },
   "devDependencies": {

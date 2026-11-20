@@ -59,7 +59,7 @@ const state = {
 };
 let toastTimer, saveTimer, savePromise;
 const isPublishing = () => state.job?.status === 'running' && state.job.kind !== 'login' && state.job.projectId === state.project?.id;
-const storageText = () => state.hosting.mode === 'hosted' ? 'Saved to your account' : 'Saved on this computer';
+const storageText = () => state.hosting.ephemeral ? 'Saved for this temporary session' : state.hosting.mode === 'hosted' ? 'Saved to your account' : 'Saved on this computer';
 const tabs = [
   ['reports', 'source', 'Data sources'], ['overview', 'grid', 'Agent details'],
   ['instructions', 'pen', 'Instructions'], ['skills', 'skill', 'Skills'], ['files', 'rocket', 'Review & publish']
@@ -72,7 +72,16 @@ async function api(path, { method = 'GET', body, binary = false } = {}) {
   });
   if (!response.ok) {
     const result = await response.json().catch(() => ({}));
-    if (response.status === 401) { state.entered = false; state.account = null; render(); }
+    if (response.status === 401) {
+      state.entered = false; state.account = null;
+      if (result.code === 'session_expired') {
+        state.project = null; state.dirty = false;
+        sessionStorage.removeItem('studio-job'); sessionStorage.removeItem('fida-resume-project');
+        const bootstrap = await fetch('/api/bootstrap').then(result => result.json());
+        state.token = bootstrap.csrfToken; state.hosting = bootstrap.hosting;
+      }
+      render();
+    }
     throw new Error(result.error || `Request failed (${response.status}).`);
   }
   return binary ? response.blob() : response.json();
@@ -108,7 +117,7 @@ function accountTools() {
     ${state.account ? `<details class="account-menu"><summary aria-label="Account menu"><span class="avatar">${esc(state.account.slice(0, 1).toUpperCase())}</span></summary><div class="account-popover"><strong>Microsoft 365</strong><p>${esc(state.account)}</p><button class="btn full" data-action="signout">${icon('logout')} Sign out</button></div></details>` : ''}`;
 }
 function connectionBadge() {
-  return `<span class="connection-pill">${icon(state.hosting.mode === 'hosted' ? 'shield' : 'folder')}${state.hosting.mode === 'hosted' ? 'Personal workspace' : 'Local workspace'}</span>`;
+  return `<span class="connection-pill">${icon(state.hosting.mode === 'hosted' ? 'shield' : 'folder')}${state.hosting.ephemeral ? 'Temporary workspace' : state.hosting.mode === 'hosted' ? 'Personal workspace' : 'Local workspace'}</span>`;
 }
 
 function renderSignIn() {
@@ -123,7 +132,7 @@ function renderSignIn() {
         : state.account ? `<div class="connection-box">${icon('check')}<div><strong>Account connected</strong><p>${esc(state.account)}</p></div></div><button class="btn primary full" data-action="continue">Continue to FIDA ${icon('arrow')}</button><button class="text-btn section-space" data-action="signout">Use a different account</button>`
           : `<button class="btn primary full signin-button" data-action="signin"><span class="ms-icon" aria-hidden="true"><i></i><i></i><i></i><i></i></span> Sign in with Microsoft</button><details class="advanced-signin"><summary>Tenant settings</summary><div class="field"><label for="tenant">Tenant ID (optional)</label><input id="tenant" placeholder="Leave blank to choose during sign-in"><span class="help">Enter a tenant GUID only if your organization requires it.</span></div></details><button class="text-btn small" data-action="refresh-auth">Already connected? Check again</button>`}
       <div class="signin-divider"></div><div class="mini-feature">${icon('shield')}<span>Microsoft handles authentication. Source access uses your existing permissions.</span></div><div class="mini-feature">${icon('file')}<span>Project source files can be exported as a ZIP.</span></div>
-      <p class="signin-footnote">${state.hosting.mode === 'hosted' ? 'Your account and projects are separate from other makers.' : 'Local edition · Publishing uses Microsoft 365 Agents Toolkit on this computer.'}</p>
+      <p class="signin-footnote">${state.hosting.ephemeral ? 'Free community preview · Isolated temporary sessions, not permanent storage. Drafts are lost on service sleep, restart, sign-out or session expiry. Download a draft ZIP before leaving.' : state.hosting.mode === 'hosted' ? 'Your account and projects are separate from other makers.' : 'Local edition · Publishing uses Microsoft 365 Agents Toolkit on this computer.'}</p>
     </section></main><div class="welcome-guide"><agent-guide></agent-guide></div><footer class="welcome-footer"><span>FIDA · A community project</span>${projectCredits()}</footer></div>`;
 }
 function readiness() {
@@ -144,7 +153,8 @@ function render() {
       ${p ? `<div class="side-label">Project configuration</div><nav aria-label="FIDA navigation">${tabs.map(([key, image, title]) => `<button class="nav-button ${state.tab === key ? 'active' : ''}" data-tab="${key}" ${state.tab === key ? 'aria-current="page"' : ''}><span class="nav-step">${icon(image)}</span><span>${title}</span>${key === 'skills' && p.skills.length ? `<span class="count">${p.skills.length}</span>` : ''}</button>`).join('')}</nav>` : `<div class="side-label">Templates</div><nav aria-label="Template shortcuts">${[['packs', 'book', 'Starter packs'], ['skills', 'skill', 'Skills'], ['profiles', 'pen', 'Behavior presets']].map(([kind, image, title]) => `<button class="nav-button" data-library="${kind}">${icon(image)} ${title}</button>`).join('')}</nav>`}
       <div class="sidebar-note"><strong>${icon('shield')} Your publishing choice</strong><p>Keep an agent personal or publish a shareable version for selected people.</p><a href="https://learn.microsoft.com/en-us/plugins/prerequisites#agent-capabilities-and-licensing-models" target="_blank" rel="noopener noreferrer">Permissions & licensing ${icon('arrow')}</a></div>
     </aside><div class="workspace"><div class="workspace-toolbar ${p ? '' : 'home-toolbar'}"><div class="breadcrumbs">${p ? `<button class="text-btn" data-action="home">My agents</button>${icon('chevron')}<strong>${esc(p.name || 'Untitled agent')}</strong>` : '<span>Home</span>'}</div><div class="actions">${state.job?.status === 'running' ? `<button class="btn small" data-action="show-job"><span class="spinner"></span> Operation running</button>` : ''}${p ? `<span class="save-status" id="save-status" role="status">${saveLabel()}</span><button class="btn small" data-action="save" id="save-button">${icon('save')} Save draft</button>` : ''}</div></div>
-      <main class="content ${p ? 'editor-content' : 'home-content'}">${p ? renderEditor() : renderDashboard()}</main><footer class="workspace-footer"><span>FIDA · ${state.hosting.mode === 'hosted' ? 'Personal workspace' : 'Saved on this computer.'}</span>${projectCredits()}</footer></div></div></div>`;
+      <main class="content ${p ? 'editor-content' : 'home-content'}">${p ? renderEditor() : renderDashboard()}</main><footer class="workspace-footer"><span>FIDA · ${storageText()}</span>${projectCredits()}</footer></div></div></div>`;
+  app.insertAdjacentHTML('beforeend', '<input class="hidden" id="draft-import" type="file" accept=".json,application/json">');
   if (isPublishing()) {
     for (const control of app.querySelectorAll('input,textarea,select,[data-remove-report],[data-remove-skill],[data-template],[data-action="add-report"],[data-action="add-skill"],[data-action="manage-sharing"],[data-action="review-publish"]')) control.disabled = true;
   }
@@ -159,7 +169,8 @@ function saveLabel() {
   return state.saving ? 'Saving…' : state.saveError ? 'Couldn’t save' : state.dirty ? 'Unsaved changes' : storageText();
 }
 function renderDashboard() {
-  return `<header class="workspace-intro"><div class="intro-copy"><span class="eyebrow">Personal workspace</span><h1>Agents</h1><p>Create and manage declarative agents<br>for Microsoft Copilot.</p><button class="btn primary" data-action="new">${icon('plus')} Create an agent</button>${fabricCredit()}</div>${notebookScene()}</header>
+  return `<header class="workspace-intro"><div class="intro-copy"><span class="eyebrow">${state.hosting.ephemeral ? 'Temporary workspace' : 'Personal workspace'}</span><h1>Agents</h1><p>Create and manage declarative agents<br>for Microsoft Copilot.</p><div class="actions"><button class="btn primary" data-action="new">${icon('plus')} Create an agent</button><button class="btn" data-action="import-draft">${icon('upload')} Import draft</button></div>${fabricCredit()}</div>${notebookScene()}</header>
+    ${temporaryDraftNotice()}
     <div class="workspace-guide-link"><span>${icon('info')} A declarative agent configures Copilot with your sources, instructions and skills.</span><button class="text-btn" data-action="agent-guide">How it works ${icon('arrow')}</button></div>
     <section class="projects-section" aria-labelledby="projects-title"><div class="section-heading"><h2 id="projects-title">Projects <span class="counter">${state.projects.length}</span></h2><span class="section-note">${storageText()}</span></div>
     ${state.projects.length ? `<div class="project-list">${state.projects.map(p => `<article class="project-row tone-source"><span class="agent-document">${icon('file')}</span><div class="project-copy"><h3><button class="project-title" data-open="${esc(p.id)}">${esc(p.name)}</button></h3><p>${esc(p.description)}</p><div class="project-meta"><span>${p.reportCount} ${p.reportCount === 1 ? 'source' : 'sources'}</span><span>${p.skillCount} ${p.skillCount === 1 ? 'skill' : 'skills'}</span></div></div><div class="project-status"><span class="status-label ${p.deployment ? 'published' : ''}"><i></i>${p.deployment ? `Published · ${p.deployment.scope === 'shared' ? 'Shareable' : 'Personal'}` : 'Draft'}</span><time datetime="${esc(p.updatedAt)}">Updated ${esc(new Date(p.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }))}</time></div><button class="btn small quiet project-open" data-open="${esc(p.id)}" aria-label="Open workspace for ${esc(p.name)}">${icon('arrow')}</button></article>`).join('')}</div>` : `<div class="first-agent-note"><span class="feature-icon tone-source">${icon('file')}</span><div><strong>No projects yet</strong><p>Create a project or select a template below.</p></div><button class="text-btn" data-action="new">Create project ${icon('arrow')}</button></div>`}</section>
@@ -186,7 +197,7 @@ function setupAside() {
 }
 function renderEditor() {
   const p = state.project;
-  const banner = isPublishing() ? `<div class="notice accent publishing-banner"><span class="spinner"></span><span>A publishing or sharing operation is running. Editing resumes when it finishes.</span><button class="text-btn" data-action="show-job">View progress</button></div>` : '';
+  const banner = temporaryDraftNotice() + (isPublishing() ? `<div class="notice accent publishing-banner"><span class="spinner"></span><span>A publishing or sharing operation is running. Editing resumes when it finishes.</span><button class="text-btn" data-action="show-job">View progress</button></div>` : '');
   if (state.tab === 'reports') return `${banner}${heading(1, 'Data sources', 'Add Power BI report or semantic model links or GUIDs. Fabric IQ provides the data answers.', `<button class="btn" data-action="add-report">${icon('plus')} Add source</button>`)}
     <div id="source-routing-nudge">${sourceRoutingNudge(p)}</div>
     <div class="editor-layout"><div>${p.reports.length ? p.reports.map(renderReport).join('') : `<div class="empty-state source-empty"><span class="feature-icon large">${icon('source')}</span><h2>No data sources</h2><p>Paste a report or semantic model link or GUID from Power BI.</p><button class="btn primary" data-action="add-report">${icon('plus')} Add Power BI source</button></div>`}<div class="notice section-space">${icon('info')}<span>Link and GUID checks verify structure only, not data access or model contents. The agent uses the current user’s Power BI permissions.</span></div></div>${setupAside()}</div>
@@ -215,6 +226,10 @@ function renderEditor() {
     <div class="notice section-space">${icon('shield')}<div><strong>${!modeSelected ? 'Choose who this deployment is for.' : shared ? 'Shareable publishing, with explicit access grants.' : 'Personal publishing, not organization-wide deployment.'}</strong><p>Publishing does not grant Power BI data access or licenses. Sharing uses each recipient’s permissions. Organization-wide catalog distribution is a separate admin-approved process.</p></div></div>
     ${state.files ? renderFiles() : `<section class="file-preview-prompt card"><span class="feature-icon">${icon('file')}</span><div><h3>Generated files</h3><p>Inspect manifests, instructions, skill files and the deployment workflow.</p></div><button class="btn" data-action="preview">${icon('file')} Generate file preview</button></section>`}
     ${!checklist[0].done ? '<p class="small muted section-space">Start by adding a Power BI source before exporting or publishing.</p>' : ''}`;
+}
+function temporaryDraftNotice() {
+  if (!state.hosting.ephemeral) return '';
+  return `<section class="notice accent temporary-draft-notice" aria-label="Temporary draft storage">${icon('info')}<div><strong>Drafts are temporary. Keep a ZIP backup.</strong><p>Projects and sign-in sessions are lost when this free service sleeps or restarts, when you sign out, or after ${state.hosting.idleMinutes ?? 30} minutes of inactivity. Published agents remain in Microsoft Copilot.</p><p>Not ready to publish? Download a draft ZIP, even if required fields are incomplete. Extract it and import fida-project.json in a later session. Restoring creates a new draft, not an update connection to a published agent.</p>${state.project ? `<button class="btn small" data-action="download-draft" ${isPublishing() ? 'disabled' : ''}>${icon('download')} Download draft ZIP</button>` : ''}<button class="text-btn small" data-action="import-draft">${icon('upload')} Import draft</button></div></section>`;
 }
 function sourceRoutingNudge(project, review = false) {
   if (project.reports.length < 2) return '';
@@ -374,7 +389,7 @@ async function download(kind) {
   await save();
   const blob = await api(`/projects/${state.project.id}/${kind}`, { binary: true });
   const url = URL.createObjectURL(blob), a = document.createElement('a');
-  a.href = url; a.download = kind === 'package' ? 'analytics-agent-app.zip' : 'analytics-agent-source.zip';
+  a.href = url; a.download = kind === 'draft' ? 'fida-draft.zip' : kind === 'package' ? 'analytics-agent-app.zip' : 'analytics-agent-source.zip';
   a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 function reviewPublish(check) {
@@ -529,9 +544,13 @@ document.addEventListener('click', event => {
         break;
       }
       case 'signout':
-        if (!confirm(state.hosting.mode === 'hosted' ? 'Sign out of your FIDA session?' : 'Sign out of Microsoft 365 Agents Toolkit on this computer? Other local Toolkit sessions share this connection.')) break;
+        if (!confirm(state.hosting.ephemeral ? 'Sign out and discard this temporary workspace? Download draft ZIPs first. Published agents are not deleted.' : state.hosting.mode === 'hosted' ? 'Sign out of your FIDA session?' : 'Sign out of Microsoft 365 Agents Toolkit on this computer? Other local Toolkit sessions share this connection.')) break;
         await save();
         await api('/auth/logout', { method: 'POST', body: {} });
+        if (state.hosting.ephemeral) {
+          const bootstrap = await fetch('/api/bootstrap').then(result => result.json());
+          state.token = bootstrap.csrfToken; state.hosting = bootstrap.hosting;
+        }
         state.account = null; state.project = null; state.dirty = false; state.entered = false; render(); break;
       case 'new': openLibrary('packs', true); break;
       case 'create-blank': $('#library-dialog').close(); await createProject(); break;
@@ -547,6 +566,8 @@ document.addEventListener('click', event => {
       case 'import-skill': $('#skill-import').click(); break;
       case 'preview': await preview(); break;
       case 'download': await download('download'); break;
+      case 'download-draft': await download('draft'); break;
+      case 'import-draft': $('#draft-import').click(); break;
       case 'download-package': await download('package'); break;
       case 'review-publish':
       case 'recheck-publish':
@@ -556,6 +577,7 @@ document.addEventListener('click', event => {
         if (dialog.dataset.projectId !== p.id || dialog.dataset.scope !== (p.deploymentScope ?? 'personal') || +dialog.dataset.revision !== p.revision || state.dirty) throw new Error('Save and recheck this deployment before confirming.');
         rememberPublisher(); dialog.close();
         const job = await api(`/projects/${p.id}/publish`, { method: 'POST', body: { confirmPublish: true, scope: p.deploymentScope ?? 'personal', revision: p.revision } });
+        if (job.redirect) { sessionStorage.setItem('fida-resume-project', p.id); window.location.assign(job.redirect); break; }
         await monitorJob(job); render(); break;
       }
       case 'manage-sharing': await save(); manageSharing(); break;
@@ -567,6 +589,7 @@ document.addEventListener('click', event => {
         const emails = $('#sharing-emails').value.trim(), operation = $('#sharing-operation').value;
         if (!emails) throw new Error('Enter at least one recipient email address.');
         const job = await api(`/projects/${p.id}/sharing`, { method: 'POST', body: { confirmSharing: true, operation, emails, titleId: dialog.dataset.titleId, revision: p.revision } });
+        if (job.redirect) { sessionStorage.setItem('fida-resume-project', p.id); window.location.assign(job.redirect); break; }
         dialog.close(); await monitorJob(job); render(); break;
       }
       case 'show-job': renderJob(); if (!$('#operation-dialog').open) $('#operation-dialog').showModal(); break;
@@ -574,6 +597,19 @@ document.addEventListener('click', event => {
   });
 });
 document.addEventListener('change', event => {
+  if (event.target.id === 'draft-import') {
+    void perform(async () => {
+      const file = event.target.files[0]; if (!file) return;
+      if (file.size > 1024 * 1024) throw new Error('Import a draft JSON file smaller than 1 MB. Extract it from your draft ZIP first.');
+      const draft = JSON.parse(await file.text());
+      await save();
+      const project = await api('/projects', { method: 'POST', body: { draft } });
+      state.project = project; state.tab = 'reports'; state.files = null; state.dirty = false;
+      state.parsed = {}; state.sourceErrors = {}; state.nameTouched = true; render();
+      toast('Draft imported as a new project. Existing published agents are not connected to this draft.');
+    });
+    return;
+  }
   if (event.target.dataset.deploymentScope !== undefined) {
     if (!state.project || isPublishing()) return;
     const p = state.project;
@@ -615,11 +651,20 @@ window.addEventListener('beforeunload', event => { if (state.dirty) { event.prev
 async function init() {
   render();
   try {
-    const bootstrap = await fetch('/api/bootstrap').then(r => { if (!r.ok) throw new Error('Local server is unavailable.'); return r.json(); });
+    const bootstrap = await fetch('/api/bootstrap').then(r => { if (!r.ok) throw new Error('FIDA is unavailable or at capacity. Please retry shortly.'); return r.json(); });
     state.token = bootstrap.csrfToken; state.hosting = bootstrap.hosting ?? { mode: 'local' };
+    if (bootstrap.loginError) toast(bootstrap.loginError, true);
     const account = await api('/auth/status'); state.account = account.account;
   } catch (error) { toast(error.message, true); }
   state.authLoading = false; render();
+  const resumeProject = sessionStorage.getItem('fida-resume-project');
+  if (resumeProject && state.account) {
+    sessionStorage.removeItem('fida-resume-project');
+    try {
+      await enterWorkspace(); await openProject(resumeProject); state.tab = 'files'; render();
+      toast('Microsoft access connected. Review and confirm your publishing or sharing operation again.');
+    } catch (error) { toast(error.message, true); }
+  }
   const pendingJob = sessionStorage.getItem('studio-job');
   if (pendingJob) {
     try { await monitorJob(await api(`/jobs/${pendingJob}`)); }

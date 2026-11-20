@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: fida
+    runtime: node
+    plan: free
+    buildCommand: npm ci --omit=dev --ignore-scripts
+    startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_VERSION
+        value: ">=22.21.1 <23"
+      - key: NODE_ENV
+        value: production
+      - key: FIDA_HOSTED
+        value: "true"
+      - key: FIDA_CLIENT_ID
+        sync: false
+      - key: FIDA_CLIENT_SECRET
+        sync: false

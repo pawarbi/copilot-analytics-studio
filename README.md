@@ -4,7 +4,7 @@ Build grounded agents for Microsoft Copilot.
 
 Built by [Sandeep Pawar](https://www.fabric.guru). FIDA is an independent community project, not a Microsoft product or project, and is not affiliated with or endorsed by Microsoft.
 
-A local web application for creating Microsoft 365 declarative agents backed by Power BI sources, with personal or shareable deployments.
+A web application for creating declarative agents backed by Power BI sources, with personal or shareable deployments. Run locally, or host the experimental community edition on Render.
 
 Data answering is powered by **Fabric IQ** through the configured Power BI MCP action. Microsoft Copilot provides the conversational runtime and composes the final answer. This application does not create Fabric data agent items.
 
@@ -19,6 +19,7 @@ Data answering is powered by **Fabric IQ** through the configured Power BI MCP a
 - Preview generated files and export project source.
 - Validate and publish personal or shareable agents using Microsoft 365 Agents Toolkit.
 - Grant or remove chat access for specific users/groups on shareable deployments, and copy the returned sharing link.
+- Download incomplete drafts as ZIP backups and import their `fida-project.json` in a later session. Restoring creates a new draft and does not reconnect to an existing published agent.
 
 ## Run locally
 
@@ -34,6 +35,26 @@ npm start
 Open http://127.0.0.1:4317 and sign in. Projects and published packages are stored in the ignored `data` directory.
 
 Publishing does not grant Microsoft Copilot, Fabric IQ or Power BI licenses. Available capabilities depend on your account, source permissions and tenant policies.
+
+## Host on Render Free (experimental)
+
+The included `render.yaml` defines one free Node web service, without a database or persistent disk. Hosted mode uses a separate in-memory Microsoft sign-in and temporary workspace for each browser session; it does not use the server owner's desktop Toolkit account. The hosted build omits development dependencies and skips install scripts for bundled native desktop credential components, which this publisher does not use.
+
+**Status:** automated OAuth, session-isolation, SDK-contract and offline initialization checks pass. Live consent, publishing and sharing with this application's own Entra client registration, including another tenant, still require end-to-end verification. Registration alone does not establish access to every downstream Microsoft publishing API.
+
+1. In Microsoft Entra, register an application for **accounts in any organizational directory**. Copy its Application (client) ID. Create a client secret under **Certificates & secrets** and copy its **Value**, not the secret ID, directly into Render. Never put it in Git or a chat.
+2. In Render, select **New > Blueprint**, connect this repository, and use `render.yaml`. Set `FIDA_CLIENT_ID` and `FIDA_CLIENT_SECRET` privately when prompted. Keep the **Free** plan. Build and start commands are already configured.
+3. After Render assigns the service's HTTPS URL, open the Entra registration's **Authentication > Add a platform > Web**. Add the exact Render origin followed by `/auth/callback` as its redirect URI. Use the actual assigned URL; do not enable public-client flows or implicit token issuance.
+4. Open FIDA and sign in. Initial sign-in requests delegated Microsoft Graph `User.Read` and standard sign-in/offline scopes. Publishing requests additional delegated consent incrementally for the Teams AuthSvc, Developer Portal and Microsoft 365 publishing services. An administrator may need to consent; unavailable API permissions or tenant policies can block this experimental integration.
+5. Test a personal agent in your own tenant, verify it in Microsoft Copilot, then test sharing and a consenting user from another tenant before advertising hosted publishing as supported. A consent redirect does not publish: return to **Review & publish** and confirm again.
+
+`FIDA_HOSTED=true` enables hosted mode. `RENDER_EXTERNAL_URL` supplies the public HTTPS origin automatically. For a custom domain, add it in Render, configure the DNS records Render provides, set `FIDA_PUBLIC_ORIGIN` to that HTTPS origin, add its exact `/auth/callback` Web redirect URI in Entra, and redeploy. Only the configured origin is accepted; use its canonical link. Do not change the DNS records serving an existing blog. Render Free supports custom domains and managed TLS.
+
+**Temporary storage:** download **draft ZIPs** before leaving. Sessions expire after 30 minutes idle (5 minutes before sign-in), after 8 hours absolutely, or on sign-out. Restarts, deployments and free-service sleep can also discard work. Published agents remain in Microsoft Copilot. Draft ZIPs contain maker-authored content but no server-owned deployment identities or authentication cache; extract the ZIP and use **Import draft** to select `fida-project.json`. For local updates to an existing deployment, also export its **source ZIP after publishing**, which retains the approved deployment workspace.
+
+The preview limits each process to 24 sessions, 10 projects per session, and one SDK publishing worker at a time. Free instances have limited memory: worker memory usage under a real publish has not been measured. A busy worker returns a retryable failure rather than starting another. An interrupted or timed-out operation may have made partial cloud changes; inspect Microsoft Copilot before retrying.
+
+Render's [free-service limits](https://render.com/docs/free), [custom domains](https://render.com/docs/custom-domains) and [Blueprint documentation](https://render.com/docs/infrastructure-as-code) describe current hosting behavior. No Render service is created merely by cloning this repository.
 
 ## Publishing and sharing
 
@@ -51,11 +72,11 @@ npm run test:browser
 npm run test:schema
 ```
 
-Browser tests require Microsoft Edge. Unit and browser tests use an isolated Toolkit test double; schema validation uses the installed Toolkit without publishing.
+Browser tests require Microsoft Edge. OAuth and publishing tests use isolated test doubles; schema validation and the SDK initialization smoke test use the installed Toolkit/SDK without publishing.
 
 ## Current scope
 
-This version runs locally and uses the Toolkit account on the same computer. It is not configured for shared public hosting. Per-user hosted authentication, Render deployment and published-agent querying are not implemented.
+Local mode uses the Toolkit account on the same computer. Hosted mode has isolated temporary browser sessions and an experimental delegated SDK publisher; live hosted publication and cross-tenant consent are not yet verified. Persistent hosted projects, organization-wide deployment and querying a published agent from FIDA are not implemented.
 
 This is a community project, not an official Microsoft product.
 

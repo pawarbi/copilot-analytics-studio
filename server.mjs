@@ -15,10 +15,10 @@ const staticFiles = {
   ...Object.fromEntries(['report_32_item.svg', 'semantic_model_32_item.svg', 'power_bi_32_color.svg', 'copilot_32_color.svg', 'fabric_32_color.svg'].map(name => [`/icons/${name}`, [join('icons', name), 'image/svg+xml']]))
 };
 
-export function createApp({ dataDir = join(ROOT, 'data'), toolkit = createToolkitRunner() } = {}) {
+export function createApp({ dataDir = join(ROOT, 'data'), toolkit = createToolkitRunner(), origin = null, hosting = { mode: 'local' } } = {}) {
   const csrfToken = randomBytes(32).toString('hex');
   const jobs = new Map(), pendingWrites = new Set();
-  let activeJob = null, signingOut = false, accountCache = null, accountPromise = null;
+  let activeJob = null, signingOut = false, accountCache = null, accountPromise = null, creatingProject = false;
   const projectsDir = join(dataDir, 'projects');
   const projectPath = id => {
     if (!UUID.test(id)) throw new InputError('Invalid project identifier.');
@@ -59,10 +59,10 @@ export function createApp({ dataDir = join(ROOT, 'data'), toolkit = createToolki
     if (activeJob || signingOut) throw new InputError('Another sign-in, publishing or sharing operation is running.', 409);
     const job = { id: randomUUID(), kind, projectId, status: 'running', startedAt: new Date().toISOString(), logs: [], result: null, error: null };
     jobs.set(job.id, job); activeJob = job.id;
-    while (jobs.size > 30) jobs.delete(jobs.keys().next().value);
+    while (jobs.size > (hosting.ephemeral ? 5 : 30)) jobs.delete(jobs.keys().next().value);
     const log = message => {
       for (const line of redact(message).split(/\r?\n/).filter(Boolean)) job.logs.push(line.slice(0, 4000));
-      job.logs = job.logs.slice(-600);
+      job.logs = job.logs.slice(hosting.ephemeral ? -150 : -600);
     };
     Promise.resolve().then(() => run(log)).then(result => { job.result = result; job.status = 'succeeded'; }).catch(error => {
       job.error = redact(error.message); job.status = 'failed'; log(job.error);
@@ -123,7 +123,7 @@ export function createApp({ dataDir = join(ROOT, 'data'), toolkit = createToolki
 
   const server = http.createServer(async (req, res) => {
     const port = server.address()?.port;
-    const allowedHosts = [`127.0.0.1:${port}`, `localhost:${port}`];
+    const allowedHosts = origin ? [new URL(origin).host] : [`127.0.0.1:${port}`, `localhost:${port}`];
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Referrer-Policy', 'no-referrer');
@@ -131,9 +131,9 @@ export function createApp({ dataDir = join(ROOT, 'data'), toolkit = createToolki
     res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
     try {
       if (!allowedHosts.includes(req.headers.host)) throw new InputError('Unrecognized host.', 403);
-      if (req.headers.origin && !allowedHosts.map(h => `http://${h}`).includes(req.headers.origin)) throw new InputError('Cross-origin requests are not allowed.', 403);
-      if (req.headers['sec-fetch-site'] === 'cross-site') throw new InputError('Cross-site requests are not allowed.', 403);
-      const url = new URL(req.url, `http://${req.headers.host}`);
+      if (req.headers.origin && !(origin ? [origin] : allowedHosts.map(h => `http://${h}`)).includes(req.headers.origin)) throw new InputError('Cross-origin requests are not allowed.', 403);
+      if (req.headers['sec-fetch-site'] === 'cross-site' && (!origin || req.url.startsWith('/api/'))) throw new InputError('Cross-site requests are not allowed.', 403);
+      const url = new URL(req.url, origin ?? `http://${req.headers.host}`);
       if (staticFiles[url.pathname] && req.method === 'GET') {
         const [file, type] = staticFiles[url.pathname];
         let content = await readFile(join(ROOT, 'public', file));
@@ -142,7 +142,7 @@ export function createApp({ dataDir = join(ROOT, 'data'), toolkit = createToolki
         res.setHeader('Content-Security-Policy', `default-src 'self'; script-src 'self' 'nonce-${nonce}'; style-src 'self' 'nonce-${nonce}'; img-src 'self' blob: data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'`);
         res.writeHead(200, { 'Content-Type': type }); return res.end(content);
       }
-      if (url.pathname === '/api/bootstrap' && req.method === 'GET') return json(res, 200, { csrfToken, publishingScopes: ['personal', 'shared'] });
+      if (url.pathname === '/api/bootstrap' && req.method === 'GET') return json(res, 200, { csrfToken, publishingScopes: ['personal', 'shared'], hosting });
       if (!url.pathname.startsWith('/api/')) throw new InputError('Not found.', 404);
       if (req.headers['x-studio-token'] !== csrfToken) throw new InputError('Reload the application to establish a local session.', 403);
       if (url.pathname === '/api/auth/status' && req.method === 'GET') return json(res, 200, await accountStatus());
@@ -191,11 +191,24 @@ export function createApp({ dataDir = join(ROOT, 'data'), toolkit = createToolki
         return json(res, 200, projects.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).map(({ id, name, description, updatedAt, reports, skills, deployment }) => ({ id, name, description, updatedAt, reportCount: reports.length, skillCount: skills.length, deployment })));
       }
       if (url.pathname === '/api/projects' && req.method === 'POST') {
-        await body(req);
-        const project = newProject(); await storeProject(project);
-        return json(res, 201, project);
+        const input = await body(req);
+        if (hosting.ephemeral && creatingProject) throw new InputError('Wait for your current project to finish creating.', 409);
+        if (hosting.ephemeral) creatingProject = true;
+        try {
+          if (hosting.ephemeral) {
+            await mkdir(projectsDir, { recursive: true });
+            if ((await readdir(projectsDir)).length >= 10) throw new InputError('This temporary session has reached its 10-project limit. Download your draft ZIPs and start a new session.', 429);
+          }
+          let project = newProject();
+          if (input.draft !== undefined) {
+            if (input.draft?.format !== 'fida-project' || input.draft?.version !== 1) throw new InputError('Import a FIDA draft JSON file from a downloaded draft ZIP.');
+            project = normalizeProject(input.draft.project, project);
+          }
+          await storeProject(project);
+          return json(res, 201, project);
+        } finally { creatingProject = false; }
       }
-      const match = /^\/api\/projects\/([0-9a-f-]+)(?:\/(files|check|download|package|publish|sharing))?$/.exec(url.pathname);
+      const match = /^\/api\/projects\/([0-9a-f-]+)(?:\/(files|check|download|draft|package|publish|sharing))?$/.exec(url.pathname);
       if (!match) throw new InputError('Not found.', 404);
       const [, id, action] = match;
       if (!action && req.method === 'GET') return json(res, 200, await loadProject(id));
@@ -210,6 +223,15 @@ export function createApp({ dataDir = join(ROOT, 'data'), toolkit = createToolki
         });
       }
       const project = await loadProject(id);
+      if (action === 'draft' && req.method === 'GET') {
+        const { name, description, version, instructions, developer, reports, skills, deploymentScope } = project;
+        const draft = { format: 'fida-project', version: 1, project: { name, description, version, instructions, developer, reports, skills, deploymentScope } };
+        const zip = zipSync({
+          'fida-project.json': strToU8(JSON.stringify(draft, null, 2)),
+          'README.txt': strToU8('FIDA draft backup. Extract this ZIP, then choose Import draft in FIDA and select fida-project.json.\nRestoring creates a new draft, not a connection to an existing published agent. Published agents are not deleted when temporary drafts expire.\nTo preserve an existing deployment workspace for local updates, also export its source ZIP after publishing.\nhttps://github.com/pawarbi/copilot-analytics-studio\n')
+        });
+        res.writeHead(200, { 'Content-Type': 'application/zip', 'Content-Disposition': 'attachment; filename="fida-draft.zip"' }); return res.end(zip);
+      }
       if (action === 'check' && req.method === 'GET') return json(res, 200, validateProject(project, { publish: true }));
       if (action === 'files' && req.method === 'GET') {
         const check = validateProject(project);
@@ -318,7 +340,7 @@ export function createApp({ dataDir = join(ROOT, 'data'), toolkit = createToolki
     }
   });
   server.requestTimeout = 30000;
-  return { server, accountStatus, dataDir };
+  return { server, accountStatus, dataDir, csrfToken, isBusy: () => Boolean(activeJob || signingOut || pendingWrites.size), invalidateAccount: () => { accountCache = null; } };
 }
 
 function safeCopilotLink(value, fallback = 'https://m365.cloud.microsoft/chat/') {
@@ -333,7 +355,14 @@ function safeCopilotLink(value, fallback = 'https://m365.cloud.microsoft/chat/')
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const port = Number(process.env.PORT ?? 4317);
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('PORT must be between 1 and 65535.');
-  const { server } = createApp();
-  server.listen(port, '127.0.0.1', () => console.log(`FIDA is ready at http://127.0.0.1:${port}`));
-  for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => server.close(() => process.exit(0)));
+  const hosted = process.env.FIDA_HOSTED === 'true';
+  const app = hosted ? await (await import('./lib/hosted-server.mjs')).createHostedApp({
+    origin: process.env.FIDA_PUBLIC_ORIGIN || process.env.RENDER_EXTERNAL_URL,
+    clientId: process.env.FIDA_CLIENT_ID, clientSecret: process.env.FIDA_CLIENT_SECRET
+  }) : createApp();
+  const { server } = app;
+  server.listen(port, hosted ? '0.0.0.0' : '127.0.0.1', () => console.log(`FIDA is ready at ${hosted ? process.env.FIDA_PUBLIC_ORIGIN || process.env.RENDER_EXTERNAL_URL : `http://127.0.0.1:${port}`}`));
+  for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => server.close(async () => {
+    try { await app.dispose?.(); } finally { process.exit(0); }
+  }));
 }

@@ -54,7 +54,7 @@ export function fakeToolkit({ signedIn = true } = {}) {
 export async function testApp(options = {}) {
   const dataDir = await mkdtemp(join(tmpdir(), 'copilot-studio-test-'));
   const fake = fakeToolkit(options);
-  const { server } = createApp({ dataDir, toolkit: fake.run });
+  const { server } = createApp({ dataDir, toolkit: fake.run, hosting: options.hosting });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const base = `http://127.0.0.1:${server.address().port}`;
   const token = (await fetch(`${base}/api/bootstrap`).then(r => r.json())).csrfToken;

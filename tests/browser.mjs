@@ -6,7 +6,7 @@ import { unzipSync, strFromU8 } from 'fflate';
 import { testApp, validProject, reportId } from './fixtures.mjs';
 
 const app = await testApp({ signedIn: false });
-let browser, browserServer;
+let browser, browserServer, temporaryApp;
 async function checkCommunityCredits(page) {
   const footer = page.locator('.welcome-footer, .workspace-footer');
   const repository = footer.getByRole('link', { name: 'GitHub · Run locally', exact: true });
@@ -316,6 +316,16 @@ try {
   assert.equal(await page.locator('.publisher-review input:visible').count(), 5, 'Publish confirmation keeps all publisher fields and the optional remember checkbox visible.');
   assert.equal(app.state.calls.some(args => args[0] === 'provision'), false, 'Opening confirmation must not publish.');
   await page.screenshot({ path: 'test-results/publish-review.png', fullPage: true });
+  await page.route('**/api/projects/*/publish', route => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({ redirect: `${app.base}/?consent-test=1` })
+  }), { times: 1 });
+  await page.getByRole('button', { name: 'Confirm personal publish', exact: true }).click();
+  await page.waitForURL('**/?consent-test=1');
+  await page.getByText('Microsoft access connected. Review and confirm your publishing or sharing operation again.', { exact: true }).waitFor();
+  assert.equal(app.state.calls.some(args => args[0] === 'provision'), false, 'Returning from delegated consent must not automatically publish.');
+  assert.equal(await page.evaluate(() => sessionStorage.getItem('fida-resume-project')), null);
+  await page.getByRole('button', { name: 'Publish to Copilot', exact: true }).click();
   let release;
   app.state.hold = new Promise(resolve => { release = resolve; });
   await page.getByRole('button', { name: 'Confirm personal publish', exact: true }).click();
@@ -388,7 +398,34 @@ try {
   await page.screenshot({ path: 'test-results/mobile-dark-sign-in.png', fullPage: true });
   assert.deepEqual(errors, [], 'Browser should have no script, rendering or CSP errors.');
   assert.equal(app.state.calls.filter(args => args[0] === 'provision').length, 2);
-  console.log('Browser passed: agent explainer, responsive themes, sign-in, catalog, GUID sources, autosave, import/export, personal/shared publishing, recipient grants/removal and recovery.');
+  temporaryApp = await testApp({ hosting: { mode: 'hosted', ephemeral: true, idleMinutes: 30 } });
+  await page.goto(temporaryApp.base);
+  await page.getByRole('button', { name: /Continue to FIDA/ }).click();
+  await page.getByRole('region', { name: 'Temporary draft storage' }).waitFor();
+  await page.getByRole('button', { name: 'Create an agent', exact: true }).click();
+  await page.getByRole('button', { name: 'Empty project', exact: true }).click();
+  const notice = page.getByRole('region', { name: 'Temporary draft storage' });
+  await notice.getByRole('button', { name: 'Download draft ZIP', exact: true }).waitFor();
+  assert.match(await notice.innerText(), /30 minutes of inactivity/);
+  assert.match(await notice.innerText(), /Published agents remain in Microsoft Copilot/);
+  const draftDownload = page.waitForEvent('download');
+  await notice.getByRole('button', { name: 'Download draft ZIP', exact: true }).click();
+  const draftPath = join('test-results', 'incomplete-draft.zip');
+  await (await draftDownload).saveAs(draftPath);
+  const draftJson = unzipSync(new Uint8Array(await readFile(draftPath)))['fida-project.json'];
+  assert.equal(JSON.parse(strFromU8(draftJson)).project.deploymentScope, null);
+  const previous = await temporaryApp.json('/projects');
+  await page.locator('#draft-import').setInputFiles({ name: 'fida-project.json', mimeType: 'application/json', buffer: Buffer.from(draftJson) });
+  await page.getByText('Draft imported as a new project. Existing published agents are not connected to this draft.', { exact: true }).waitFor();
+  const restored = await temporaryApp.json('/projects');
+  assert.equal(restored.length, previous.length + 1);
+  assert.equal(await page.getByRole('radio', { checked: true }).count(), 0);
+  for (const width of [320, 390, 1440]) {
+    await page.setViewportSize({ width, height: 1000 });
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true, 'Temporary draft notices must fit narrow screens.');
+  }
+  assert.deepEqual(errors, [], 'Draft backup and restoration must not introduce browser errors.');
+  console.log('Browser passed: agent explainer, responsive themes, sign-in, catalog, GUID sources, autosave, import/export, personal/shared publishing, recipient grants/removal, temporary notices and incomplete draft recovery.');
   console.log('Publishing/authentication used an isolated test double; no Microsoft account or cloud agent was changed.');
 } finally {
   if (browserServer) {
@@ -398,5 +435,6 @@ try {
       await browserServer.close();
     } finally { clearTimeout(timer); }
   }
+  await temporaryApp?.close();
   await app.close();
 }

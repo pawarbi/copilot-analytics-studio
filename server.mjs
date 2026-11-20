@@ -352,7 +352,7 @@ function safeCopilotLink(value, fallback = 'https://m365.cloud.microsoft/chat/')
   return fallback;
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+async function startServer() {
   const port = Number(process.env.PORT ?? 4317);
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('PORT must be between 1 and 65535.');
   const hosted = process.env.FIDA_HOSTED === 'true';
@@ -365,4 +365,12 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => server.close(async () => {
     try { await app.dispose?.(); } finally { process.exit(0); }
   }));
+}
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  // Finish evaluating this module before the hosted adapter imports createApp.
+  void startServer().catch(error => {
+    console.error(error);
+    process.exitCode = 1;
+  });
 }

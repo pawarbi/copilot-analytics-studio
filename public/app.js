@@ -1,4 +1,5 @@
 import { PACKS, SKILLS, PROFILES, applyPack, skillFromCatalog, normalizeHttps } from './catalog.js';
+import { defineAgentGuide } from './agent-guide.js';
 
 const $ = selector => document.querySelector(selector);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -36,6 +37,7 @@ const paths = {
   spark: '<path d="m12 3 2.2 6.8L21 12l-6.8 2.2L12 21l-2.2-6.8L3 12l6.8-2.2zM20 2v4m-2-2h4"/>'
 };
 const icon = name => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name] ?? paths.info}</svg>`;
+defineAgentGuide(icon);
 const brand = () => `<div class="brand"><span class="brand-mark">${icon('book')}</span><div><strong>Agent Studio</strong><span>Power BI agents for Microsoft 365</span></div></div>`;
 const packTone = id => id === 'sales' || id === 'customers' ? 'expertise' : id === 'finance' || id === 'executive' ? 'rules' : 'source';
 function notebookScene() {
@@ -110,14 +112,14 @@ function renderSignIn() {
     <main class="welcome-main"><section class="welcome-story"><span class="eyebrow">Microsoft 365 declarative agents</span><h1>Build agents for<br>Microsoft 365<br>Copilot.</h1>
       <p class="lead">Configure Power BI sources, instructions and skills. Validate the package and publish to your Copilot account.</p>
       ${notebookScene()}
-      <button class="text-btn" data-library="packs">${icon('book')} Browse templates ${icon('arrow')}</button>
+      <div class="welcome-links"><button class="text-btn" data-action="agent-guide">${icon('info')} How it works</button><button class="text-btn" data-library="packs">${icon('book')} Browse templates ${icon('arrow')}</button></div>
     </section><section class="signin-card card" aria-labelledby="signin-title"><span class="signin-kicker">${icon('folder')} Account</span><h2 id="signin-title">${state.account ? 'Continue to Agent Studio' : 'Sign in'}</h2><p>Use your Microsoft 365 work or school account.</p>
       ${state.authLoading ? `<div class="connection-box"><span class="spinner"></span><div><strong>Checking your connection</strong><p>Looking for your Microsoft 365 session.</p></div></div>`
         : state.account ? `<div class="connection-box">${icon('check')}<div><strong>Account connected</strong><p>${esc(state.account)}</p></div></div><button class="btn primary full" data-action="continue">Continue to studio ${icon('arrow')}</button><button class="text-btn section-space" data-action="signout">Use a different account</button>`
           : `<button class="btn primary full signin-button" data-action="signin"><span class="ms-icon" aria-hidden="true"><i></i><i></i><i></i><i></i></span> Sign in with Microsoft</button><details class="advanced-signin"><summary>Tenant settings</summary><div class="field"><label for="tenant">Tenant ID (optional)</label><input id="tenant" placeholder="Leave blank to choose during sign-in"><span class="help">Enter a tenant GUID only if your organization requires it.</span></div></details><button class="text-btn small" data-action="refresh-auth">Already connected? Check again</button>`}
       <div class="signin-divider"></div><div class="mini-feature">${icon('shield')}<span>Microsoft handles authentication. Source access uses your existing permissions.</span></div><div class="mini-feature">${icon('file')}<span>Project source files can be exported as a ZIP.</span></div>
       <p class="signin-footnote">${state.hosting.mode === 'hosted' ? 'Your account and projects are separate from other makers.' : 'Local edition · Publishing uses Microsoft 365 Agents Toolkit on this computer.'}</p>
-    </section></main><footer class="welcome-footer"><span>Agent Studio · A community project</span><span>Built for Microsoft 365 Copilot · Not an official Microsoft product</span></footer></div>`;
+    </section></main><div class="welcome-guide"><agent-guide></agent-guide></div><footer class="welcome-footer"><span>Agent Studio · A community project</span><span>Built for Microsoft 365 Copilot · Not an official Microsoft product</span></footer></div>`;
 }
 function readiness() {
   const p = state.project;
@@ -132,7 +134,7 @@ function render() {
   const app = $('#app');
   if (!state.entered) { app.innerHTML = renderSignIn(); return; }
   const p = state.project;
-  app.innerHTML = `<div class="studio"><header class="appbar">${brand()}<div class="appbar-center">${connectionBadge()}</div><div class="actions"><button class="btn quiet library-launch" data-library="packs">${icon('book')} Template library</button>${accountTools()}</div></header>
+  app.innerHTML = `<div class="studio"><header class="appbar">${brand()}<div class="appbar-center">${connectionBadge()}</div><div class="actions"><button class="btn quiet help-launch" data-action="agent-guide" aria-label="How it works">${icon('info')} How it works</button><button class="btn quiet library-launch" data-library="packs">${icon('book')} Template library</button>${accountTools()}</div></header>
     <div class="studio-body"><aside class="sidebar"><button class="nav-button home-button ${!p ? 'active' : ''}" data-action="home">${icon('folder')} My agents</button><button class="btn quiet full sidebar-create" data-action="new">${icon('plus')} New agent</button>
       ${p ? `<div class="side-label">Project configuration</div><nav aria-label="Studio navigation">${tabs.map(([key, image, title]) => `<button class="nav-button ${state.tab === key ? 'active' : ''}" data-tab="${key}" ${state.tab === key ? 'aria-current="page"' : ''}><span class="nav-step">${icon(image)}</span><span>${title}</span>${key === 'skills' && p.skills.length ? `<span class="count">${p.skills.length}</span>` : ''}</button>`).join('')}</nav>` : `<div class="side-label">Templates</div><nav aria-label="Template shortcuts">${[['packs', 'book', 'Starter packs'], ['skills', 'skill', 'Skills'], ['profiles', 'pen', 'Behavior presets']].map(([kind, image, title]) => `<button class="nav-button" data-library="${kind}">${icon(image)} ${title}</button>`).join('')}</nav>`}
       <div class="sidebar-note"><strong>${icon('shield')} Personal publishing</strong><p>Your agents publish to your own Copilot.</p><a href="https://learn.microsoft.com/en-us/plugins/prerequisites#agent-capabilities-and-licensing-models" target="_blank" rel="noopener noreferrer">Permissions & licensing ${icon('arrow')}</a></div>
@@ -153,6 +155,7 @@ function saveLabel() {
 }
 function renderDashboard() {
   return `<header class="workspace-intro"><div class="intro-copy"><span class="eyebrow">Personal workspace</span><h1>Agents</h1><p>Create and manage declarative agents<br>for Microsoft 365 Copilot.</p><button class="btn primary" data-action="new">${icon('plus')} Create an agent</button></div>${notebookScene()}</header>
+    <div class="workspace-guide-link"><span>${icon('info')} A declarative agent configures Copilot with your sources, instructions and skills.</span><button class="text-btn" data-action="agent-guide">How it works ${icon('arrow')}</button></div>
     <section class="projects-section" aria-labelledby="projects-title"><div class="section-heading"><h2 id="projects-title">Projects <span class="counter">${state.projects.length}</span></h2><span class="section-note">${storageText()}</span></div>
     ${state.projects.length ? `<div class="project-list">${state.projects.map(p => `<article class="project-row tone-source"><span class="agent-document">${icon('file')}</span><div class="project-copy"><h3><button class="project-title" data-open="${esc(p.id)}">${esc(p.name)}</button></h3><p>${esc(p.description)}</p><div class="project-meta"><span>${p.reportCount} ${p.reportCount === 1 ? 'source' : 'sources'}</span><span>${p.skillCount} ${p.skillCount === 1 ? 'skill' : 'skills'}</span></div></div><div class="project-status"><span class="status-label ${p.deployment ? 'published' : ''}"><i></i>${p.deployment ? 'Published · Personal' : 'Draft'}</span><time datetime="${esc(p.updatedAt)}">Updated ${esc(new Date(p.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }))}</time></div><button class="btn small quiet project-open" data-open="${esc(p.id)}" aria-label="Open workspace for ${esc(p.name)}">${icon('arrow')}</button></article>`).join('')}</div>` : `<div class="first-agent-note"><span class="feature-icon tone-source">${icon('file')}</span><div><strong>No projects yet</strong><p>Create a project or select a template below.</p></div><button class="text-btn" data-action="new">Create project ${icon('arrow')}</button></div>`}</section>
     <section class="starter-section"><div class="section-heading"><div><h2>Templates</h2><p>Preconfigured instructions and skills. Editable before publishing.</p></div><button class="text-btn" data-library="packs">View all templates ${icon('arrow')}</button></div>
@@ -455,6 +458,12 @@ document.addEventListener('click', event => {
     if (el.dataset.removeSkill !== undefined) { state.project.skills.splice(+el.dataset.removeSkill, 1); markChanged(); render(); return; }
     if (el.dataset.parseReport !== undefined) { await parseReport(+el.dataset.parseReport); render(); return; }
     switch (el.dataset.action) {
+      case 'agent-guide': {
+        const dialog = $('#guide-dialog');
+        dialog.innerHTML = `<div class="guide-dialog-header"><span>Agent Studio / Documentation</span><button class="btn icon-only quiet" data-close-dialog="guide-dialog" aria-label="Close agent guide">${icon('close')}</button></div><div class="dialog-body"><agent-guide></agent-guide></div>`;
+        dialog.showModal();
+        break;
+      }
       case 'theme': {
         const theme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
         document.documentElement.dataset.theme = theme;

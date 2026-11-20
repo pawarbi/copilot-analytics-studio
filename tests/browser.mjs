@@ -29,13 +29,50 @@ try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, acceptDownloads: true });
   page.setDefaultTimeout(10000);
   const errors = [];
+  const apiRequests = [];
+  page.on('request', request => { if (new URL(request.url()).pathname.startsWith('/api/')) apiRequests.push(request.url()); });
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
   await page.goto(`${app.base}/?scoutTheme=light`);
   await page.getByRole('button', { name: 'Sign in with Microsoft' }).waitFor();
   assert.equal(await page.locator('html').getAttribute('data-theme'), 'light');
   await checkPalette(page);
+  const guide = page.locator('.welcome-guide agent-guide');
+  await guide.getByRole('heading', { name: 'What is a declarative agent?', exact: true }).waitFor();
+  const requestsBeforeGuide = apiRequests.length;
+  await page.clock.install();
+  await guide.getByRole('button', { name: 'Play example', exact: true }).click();
+  await page.clock.runFor(3600);
+  assert.match(await guide.getByRole('tab', { selected: true }).textContent(), /Instructions & skills/);
+  await guide.getByRole('button', { name: 'Pause example', exact: true }).click();
+  await page.clock.runFor(7200);
+  assert.match(await guide.getByRole('tab', { selected: true }).textContent(), /Instructions & skills/, 'Pausing must stop the walkthrough.');
+  await guide.getByRole('tab', { selected: true }).focus();
+  await page.keyboard.press('End');
+  assert.match(await guide.getByRole('tab', { selected: true }).textContent(), /Response/);
+  await page.keyboard.press('Home');
+  assert.match(await guide.getByRole('tab', { selected: true }).textContent(), /User question/);
+  await page.keyboard.press('ArrowRight');
+  await guide.getByRole('button', { name: 'Play example', exact: true }).click();
+  await page.clock.runFor(11000);
+  await guide.getByRole('button', { name: 'Replay example', exact: true }).waitFor();
+  assert.equal(apiRequests.length, requestsBeforeGuide, 'The illustration must not query data or change the account.');
   await page.screenshot({ path: 'test-results/sign-in.png', fullPage: true });
+  await page.getByRole('button', { name: 'How it works', exact: true }).click();
+  await page.getByRole('dialog', { name: 'About declarative agents', exact: true }).waitFor();
+  const guideDialog = page.locator('#guide-dialog');
+  const dialogGuide = guideDialog.locator('agent-guide');
+  assert.equal(await page.locator('agent-guide').count(), 2);
+  const guideIds = await page.locator('agent-guide [id]').evaluateAll(elements => elements.map(element => element.id));
+  assert.equal(new Set(guideIds).size, guideIds.length, 'Guide instances must have distinct accessible IDs.');
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await dialogGuide.getByRole('button', { name: 'Play example', exact: true }).click();
+  assert.equal(await dialogGuide.getByRole('tab', { selected: true }).evaluate(element => getComputedStyle(element, '::before').animationName), 'none');
+  await page.keyboard.press('Escape');
+  await dialogGuide.locator('[data-guide-play]').filter({ hasText: 'Play example' }).waitFor({ state: 'attached' });
+  await page.clock.runFor(4000);
+  assert.match(await dialogGuide.getByRole('tab', { selected: true, includeHidden: true }).textContent(), /User question/, 'Closing the guide must stop playback.');
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
   await page.getByRole('button', { name: 'Browse templates', exact: true }).click();
   await page.getByLabel('Search templates').fill('finance');
   assert.equal(await page.locator('.catalog-card').count(), 1);
@@ -63,12 +100,23 @@ try {
     await page.setViewportSize({ width, height: 1000 });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true, `The projects page must fit a ${width}px viewport.`);
     assert.equal(await page.getByRole('button', { name: 'Create an agent', exact: true }).isVisible(), true);
-    if (width === 390) await page.screenshot({ path: 'test-results/mobile-projects.png', fullPage: true });
+    if (width === 390) {
+      await page.screenshot({ path: 'test-results/mobile-projects.png', fullPage: true });
+      await page.locator('.appbar').getByRole('button', { name: 'How it works', exact: true }).click();
+      assert.equal(await guideDialog.evaluate(element => element.scrollWidth <= element.clientWidth + 1), true, 'The mobile guide must not overflow.');
+      await dialogGuide.getByRole('tab', { name: /Power BI action/ }).click();
+      await page.screenshot({ path: 'test-results/mobile-agent-guide.png', fullPage: true });
+      await page.getByRole('button', { name: 'Close agent guide', exact: true }).click();
+    }
   }
   await page.screenshot({ path: 'test-results/studio-dashboard.png', fullPage: true });
   await page.getByRole('button', { name: 'Switch to dark theme', exact: true }).click();
   await checkPalette(page);
   await page.screenshot({ path: 'test-results/studio-dashboard-dark.png', fullPage: true });
+  await page.locator('.appbar').getByRole('button', { name: 'How it works', exact: true }).click();
+  await dialogGuide.getByRole('tab', { name: /Power BI action/ }).click();
+  await page.screenshot({ path: 'test-results/agent-guide-dark.png', fullPage: true });
+  await page.getByRole('button', { name: 'Close agent guide', exact: true }).click();
   await page.getByRole('button', { name: 'Switch to light theme', exact: true }).click();
   await page.locator('[data-create-pack="general"]').click();
   await page.getByRole('button', { name: 'Add Power BI source', exact: true }).click();
@@ -82,6 +130,10 @@ try {
   await page.locator('.sidebar [data-tab="overview"]').click();
   assert.equal(await page.getByLabel('Agent name', { exact: true }).inputValue(), 'Sales <em>context</em> insight');
   await page.getByLabel('Agent name', { exact: true }).fill('Browser-tested analyst');
+  await page.locator('.appbar').getByRole('button', { name: 'How it works', exact: true }).click();
+  await dialogGuide.getByRole('heading', { name: 'What is a declarative agent?', exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Close agent guide', exact: true }).click();
+  assert.equal(await page.getByLabel('Agent name', { exact: true }).inputValue(), 'Browser-tested analyst', 'Opening help must preserve the draft.');
   await page.locator('.publisher-disclosure > summary').click();
   await page.getByLabel('Publisher name', { exact: true }).fill('Contoso');
   await page.getByLabel('Website', { exact: true }).fill('contoso.com');
@@ -177,13 +229,15 @@ try {
   await page.screenshot({ path: 'test-results/mobile-dark-sign-in.png', fullPage: true });
   assert.deepEqual(errors, [], 'Browser should have no script, rendering or CSP errors.');
   assert.equal(app.state.calls.filter(args => args[0] === 'provision').length, 1);
-  console.log('Browser passed: sign-in, searchable catalog, starter packs, smart URL/name defaults, behavior protection, skill import, source export, confirmed publish, recovery and responsive account access.');
+  console.log('Browser passed: agent explainer playback, pause/replay, keyboard controls, reduced motion, dialog cleanup, responsive themes, sign-in, catalog, autosave, import/export, confirmed publish and recovery.');
   console.log('Publishing/authentication used an isolated test double; no Microsoft account or cloud agent was changed.');
 } finally {
-  if (browser) await browser.close();
   if (browserServer) {
     const timer = setTimeout(() => { void browserServer.kill(); }, 5000);
-    try { await browserServer.close(); } finally { clearTimeout(timer); }
+    try {
+      if (browser) await browser.close();
+      await browserServer.close();
+    } finally { clearTimeout(timer); }
   }
   await app.close();
 }

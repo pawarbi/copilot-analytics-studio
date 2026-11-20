@@ -29,6 +29,9 @@ test('rejects foreign origins, cross-site requests and arbitrary static file rea
   assert.equal((await fetch(`${app.base}/api/bootstrap`, { headers: { Origin: 'https://foreign.test' } })).status, 403);
   assert.equal((await fetch(`${app.base}/api/bootstrap`, { headers: { 'Sec-Fetch-Site': 'cross-site' } })).status, 403);
   assert.equal((await fetch(`${app.base}/server.mjs`)).status, 404);
+  const guide = await fetch(`${app.base}/agent-guide.js`);
+  assert.equal(guide.status, 200);
+  assert.match(guide.headers.get('content-type'), /javascript/);
   const html = await fetch(app.base);
   assert.match(html.headers.get('content-security-policy'), /script-src 'self' 'nonce-/);
   assert.doesNotMatch(await html.text(), /__NONCE__/);

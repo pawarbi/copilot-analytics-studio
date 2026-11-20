@@ -2,6 +2,8 @@
 
 Build grounded agents for Microsoft Copilot.
 
+Built by [Sandeep Pawar](https://www.fabric.guru). FIDA is an independent community project, not a Microsoft product or project, and is not affiliated with or endorsed by Microsoft.
+
 A local web application for creating Microsoft 365 declarative agents backed by Power BI sources, with personal or shareable deployments.
 
 Data answering is powered by **Fabric IQ** through the configured Power BI MCP action. Microsoft Copilot provides the conversational runtime and composes the final answer. This application does not create Fabric data agent items.
@@ -23,6 +25,8 @@ Data answering is powered by **Fabric IQ** through the configured Power BI MCP a
 Requires Node.js 22.21.1 or later and a Microsoft 365 work or school account.
 
 ```shell
+git clone https://github.com/pawarbi/copilot-analytics-studio.git
+cd copilot-analytics-studio
 npm ci
 npm start
 ```

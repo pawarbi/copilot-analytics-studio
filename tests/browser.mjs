@@ -7,6 +7,16 @@ import { testApp, validProject, reportId } from './fixtures.mjs';
 
 const app = await testApp({ signedIn: false });
 let browser, browserServer;
+async function checkCommunityCredits(page) {
+  const footer = page.locator('.welcome-footer, .workspace-footer');
+  const repository = footer.getByRole('link', { name: 'GitHub · Run locally', exact: true });
+  assert.equal(await repository.getAttribute('href'), 'https://github.com/pawarbi/copilot-analytics-studio#run-locally');
+  assert.equal(await repository.getAttribute('target'), '_blank');
+  assert.equal(await repository.getAttribute('rel'), 'noopener noreferrer');
+  assert.equal(await footer.getByRole('link', { name: 'Sandeep Pawar', exact: true }).getAttribute('href'), 'https://www.fabric.guru');
+  assert.match(await footer.innerText(), /Built by Sandeep Pawar/);
+  assert.match(await footer.innerText(), /Not a Microsoft product or project, and not affiliated with or endorsed by Microsoft/);
+}
 async function checkPalette(page) {
   const colors = await page.locator('.btn.primary').first().evaluate(button => {
     const style = getComputedStyle(button);
@@ -39,6 +49,7 @@ try {
   assert.equal(await page.locator('.brand strong').textContent(), 'FIDA');
   assert.match(await page.locator('.lead').textContent(), /Build grounded agents for Microsoft Copilot/);
   assert.doesNotMatch(await page.locator('body').innerText(), /Microsoft 365 Copilot/);
+  await checkCommunityCredits(page);
   assert.equal(await page.locator('html').getAttribute('data-theme'), 'light');
   await checkPalette(page);
   const guide = page.locator('.welcome-guide agent-guide');
@@ -139,6 +150,7 @@ try {
   }
   await page.locator('.sidebar [data-action="home"]').click();
   await page.locator('.project-row').nth(1).waitFor();
+  await checkCommunityCredits(page);
   assert.equal(await page.locator('.project-row').count(), 2);
   for (const width of [320, 390, 768, 1024, 1440]) {
     await page.setViewportSize({ width, height: 1000 });

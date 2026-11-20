@@ -61,6 +61,21 @@ test('persists drafts, prevents lost updates, and exports previewed source witho
   assert.equal((await app.json('/projects'))[0].id, project.id);
 });
 
+test('does not publish or export new projects without a deployment choice', async t => {
+  const app = await testApp(); t.after(app.close);
+  const created = await app.json('/projects', { method: 'POST', body: {} });
+  assert.equal(created.deploymentScope, null);
+  const project = await app.json(`/projects/${created.id}`, { method: 'PUT', body: { ...validProject(), deploymentScope: null, revision: created.revision } });
+  const check = await app.json(`/projects/${project.id}/check`);
+  assert.match(check.errors.join(), /Choose Personal or Shareable/);
+  const exportResult = await app.request(`/projects/${project.id}/download`);
+  assert.equal(exportResult.status, 400);
+  assert.match((await exportResult.json()).error, /Choose Personal or Shareable/);
+  const publish = await app.request(`/projects/${project.id}/publish`, { method: 'POST', body: { confirmPublish: true, scope: 'personal', revision: project.revision } });
+  assert.equal(publish.status, 400);
+  assert.equal(app.state.calls.some(args => args[0] === 'provision'), false);
+});
+
 test('parses typed GUIDs and preserves semantic model routing through save and export', async t => {
   const app = await testApp(); t.after(app.close);
   assert.equal((await app.request('/sources/parse', { method: 'POST', body: { url: reportId } })).status, 400);

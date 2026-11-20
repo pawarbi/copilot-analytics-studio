@@ -74,6 +74,7 @@ export function createApp({ dataDir = join(ROOT, 'data'), toolkit = createToolki
     return join(projectPath(id), scope === 'personal' ? 'workspace' : 'workspace-shared');
   }
   async function existingEnv(id, scope = 'personal') {
+    if (scope === null) return {};
     try {
       const env = parseEnvironment(await readFile(join(workspacePath(id, scope), 'env', '.env.dev'), 'utf8'));
       if (env.AGENT_SCOPE && env.AGENT_SCOPE !== scope) throw new InputError('Workspace scope does not match the selected deployment.', 409);
@@ -333,6 +334,6 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const port = Number(process.env.PORT ?? 4317);
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('PORT must be between 1 and 65535.');
   const { server } = createApp();
-  server.listen(port, '127.0.0.1', () => console.log(`Copilot Analytics Studio is ready at http://127.0.0.1:${port}`));
+  server.listen(port, '127.0.0.1', () => console.log(`FIDA is ready at http://127.0.0.1:${port}`));
   for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => server.close(() => process.exit(0)));
 }

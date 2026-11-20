@@ -35,6 +35,10 @@ try {
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
   await page.goto(`${app.base}/?scoutTheme=light`);
   await page.getByRole('button', { name: 'Sign in with Microsoft' }).waitFor();
+  assert.equal(await page.title(), 'FIDA — Fabric IQ Declarative Agents');
+  assert.equal(await page.locator('.brand strong').textContent(), 'FIDA');
+  assert.match(await page.locator('.lead').textContent(), /Build grounded agents for Microsoft Copilot/);
+  assert.doesNotMatch(await page.locator('body').innerText(), /Microsoft 365 Copilot/);
   assert.equal(await page.locator('html').getAttribute('data-theme'), 'light');
   await checkPalette(page);
   const guide = page.locator('.welcome-guide agent-guide');
@@ -168,9 +172,13 @@ try {
   await page.getByRole('button', { name: 'Check source structure', exact: true }).click();
   await page.getByText('Report ID extracted').waitFor();
   assert.equal(await sourceInput.inputValue(), validProject().reports[0].url);
+  assert.equal(await sourceInput.evaluate(element => element.required && !!element.labels[0].querySelector('.required-mark')), true);
+  assert.equal(await page.getByLabel('Source type for GUID', { exact: true }).evaluate(element => element.required), false);
+  assert.equal(await page.getByLabel('Description & source-specific guidance', { exact: true }).evaluate(element => element.required || !!element.labels[0].querySelector('.required-mark')), false);
   assert.equal(await page.locator('.source-card em').count(), 0, 'User content must stay text, not markup.');
   assert.deepEqual(errors, [], 'Link input should not produce browser errors.');
   await sourceInput.fill(reportId);
+  assert.equal(await page.getByLabel('Source type for GUID', { exact: true }).evaluate(element => element.required && !!element.labels[0].querySelector('.required-mark')), true);
   await page.getByRole('button', { name: 'Check source structure', exact: true }).click();
   await page.getByText('Choose Report or Semantic model when entering a GUID.', { exact: true }).waitFor();
   await page.getByLabel('Source type for GUID', { exact: true }).selectOption('Report');
@@ -182,6 +190,23 @@ try {
   assert.equal(await sourceInput.inputValue(), reportId, 'GUIDs must not be rewritten into URLs.');
   assert.ok(errors.length > 0 && errors.every(error => error === 'Failed to load resource: the server responded with a status of 400 (Bad Request)'), 'Only the deliberate missing-type validation may produce HTTP errors.');
   errors.length = 0;
+  assert.equal(await page.getByRole('region', { name: 'Source routing guidance' }).count(), 0, 'A single source does not need the multi-source reminder.');
+  await page.getByRole('button', { name: 'Add source', exact: true }).click();
+  const routingNudge = page.getByRole('region', { name: 'Source routing guidance' });
+  await routingNudge.getByText(/0 of 2 sources have explicit routing guidance/).waitFor();
+  const routing = 'Use for booked sales and order trends, not recognized revenue.';
+  await page.getByLabel('When should the agent use this source?', { exact: true }).nth(0).fill(routing);
+  await routingNudge.getByText(/1 of 2 sources have explicit routing guidance/).waitFor();
+  await page.getByLabel('When should the agent use this source?', { exact: true }).nth(1).fill('Use for recognized revenue; prefer over Sales for revenue questions.');
+  await routingNudge.getByText(/2 of 2 sources have explicit routing guidance/).waitFor();
+  await page.getByRole('button', { name: 'Save draft', exact: true }).click();
+  await page.getByText('Saved on this computer', { exact: true }).waitFor();
+  const routingProjects = await app.json('/projects');
+  const routingProject = await app.json(`/projects/${routingProjects.find(project => project.name === 'Sales <em>context</em> insight').id}`);
+  assert.equal(routingProject.reports[0].routing, routing);
+  assert.match(routingProject.reports[1].routing, /prefer over Sales/);
+  await page.getByRole('button', { name: 'Remove source 2', exact: true }).click();
+  assert.equal(await routingNudge.count(), 0, 'The reminder disappears when only one source remains.');
   await page.locator('.sidebar [data-tab="overview"]').click();
   assert.equal(await page.getByLabel('Agent name', { exact: true }).inputValue(), 'Sales <em>context</em> insight');
   await page.getByLabel('Agent name', { exact: true }).fill('Browser-tested analyst');
@@ -189,7 +214,13 @@ try {
   await dialogGuide.getByRole('heading', { name: 'What is a declarative agent?', exact: true }).waitFor();
   await page.getByRole('button', { name: 'Close agent guide', exact: true }).click();
   assert.equal(await page.getByLabel('Agent name', { exact: true }).inputValue(), 'Browser-tested analyst', 'Opening help must preserve the draft.');
-  await page.locator('.publisher-disclosure > summary').click();
+  const publisherSection = page.getByRole('region', { name: 'Publisher information', exact: true });
+  assert.equal(await publisherSection.locator('summary').count(), 0, 'Required publisher information must not be collapsible.');
+  assert.equal(await publisherSection.locator('input:visible').count(), 4, 'Publisher fields are visible without expanding a section.');
+  for (const label of ['Agent name', 'Description', 'Package version', 'Publisher name', 'Website', 'Privacy policy URL', 'Terms of use URL']) {
+    assert.equal(await page.getByLabel(label, { exact: true }).evaluate(element => element.required && !!element.labels[0].querySelector('.required-mark')), true, `${label} must expose its required state and a visible red marker.`);
+  }
+  assert.equal(await publisherSection.locator('.required-mark').first().evaluate(element => getComputedStyle(element).color), 'rgb(220, 38, 38)');
   await page.getByLabel('Publisher name', { exact: true }).fill('Contoso');
   await page.getByLabel('Website', { exact: true }).fill('contoso.com');
   await page.getByLabel('Privacy policy URL', { exact: true }).fill('https://contoso.com/privacy');
@@ -197,6 +228,7 @@ try {
   await page.getByLabel('Terms of use URL', { exact: true }).blur();
   assert.equal(await page.getByLabel('Website', { exact: true }).inputValue(), 'https://contoso.com');
   await page.locator('.sidebar [data-tab="instructions"]').click();
+  assert.equal(await page.getByLabel('Agent behavior', { exact: true }).evaluate(element => element.required && !!element.labels[0].querySelector('.required-mark')), true);
   await page.getByLabel('Agent behavior', { exact: true }).fill('Use the approved Sales source and governed measures. Always state the date range and denominator.');
   page.once('dialog', dialog => dialog.dismiss());
   await page.locator('[data-profile="audit"]').click();
@@ -237,8 +269,23 @@ try {
   });
   await page.locator('#skill-name-3').waitFor();
   assert.equal(await page.locator('#skill-name-3').inputValue(), 'territory-analysis');
+  for (const key of ['name', 'description', 'instructions']) {
+    assert.equal(await page.locator(`[data-skill="3"][data-key="${key}"]`).evaluate(element => element.required && !!element.labels[0].querySelector('.required-mark')), true);
+  }
+  assert.equal(await page.locator('[data-skill="3"][data-key="recipes"]').evaluate(element => element.required || !!element.labels[0].querySelector('.required-mark')), false);
   await page.screenshot({ path: 'test-results/skills-editor.png', fullPage: true });
   await page.locator('.sidebar [data-tab="files"]').click();
+  const deploymentModes = page.getByRole('group', { name: 'Deployment mode', exact: true });
+  assert.equal(await deploymentModes.getByRole('radio').count(), 2);
+  assert.equal(await deploymentModes.locator('input:checked').count(), 0, 'New agents must not default to either deployment mode.');
+  assert.equal(await page.getByRole('button', { name: 'Publish to Copilot', exact: true }).isDisabled(), true);
+  for (const width of [320, 390, 1440]) {
+    await page.setViewportSize({ width, height: 1000 });
+    assert.equal(await deploymentModes.evaluate(element => element.scrollWidth <= element.clientWidth + 1), true, 'Both deployment choices must fit the viewport.');
+    assert.equal(await deploymentModes.getByRole('radio', { name: 'Personal — just me', exact: true }).isVisible(), true);
+    assert.equal(await deploymentModes.getByRole('radio', { name: 'Shareable — selected people', exact: true }).isVisible(), true);
+  }
+  await page.getByRole('radio', { name: 'Personal — just me', exact: true }).check();
   await page.getByRole('button', { name: 'Generate file preview', exact: true }).click();
   await page.getByRole('button', { name: 'appPackage/declarativeAgent.json', exact: true }).click();
   assert.match(await page.locator('.file-view pre').textContent(), /"folder": "skills\/rankings-and-share"/);
@@ -249,10 +296,12 @@ try {
   await download.saveAs(downloadPath);
   const files = unzipSync(new Uint8Array(await readFile(downloadPath)));
   assert.ok(strFromU8(files['appPackage/agent_instructions.md']).includes(`| Semantic model | ${reportId} |`));
+  assert.ok(strFromU8(files['appPackage/agent_instructions.md']).includes(`Routing: ${routing}`));
   assert.match(strFromU8(files['appPackage/skills/rankings-and-share/references/dax-recipes.md']), /Sales Amount/);
   assert.ok(files['appPackage/skills/territory-analysis/SKILL.md']);
   await page.getByRole('button', { name: 'Publish to Copilot', exact: true }).click();
   await page.getByRole('dialog', { name: 'Publish to your Copilot' }).waitFor();
+  assert.equal(await page.locator('.publisher-review input:visible').count(), 5, 'Publish confirmation keeps all publisher fields and the optional remember checkbox visible.');
   assert.equal(app.state.calls.some(args => args[0] === 'provision'), false, 'Opening confirmation must not publish.');
   await page.screenshot({ path: 'test-results/publish-review.png', fullPage: true });
   let release;
@@ -264,7 +313,7 @@ try {
   release(); app.state.hold = null;
   await page.getByText('Personal deployment completed', { exact: true }).waitFor();
   await page.getByRole('button', { name: 'Done', exact: true }).click();
-  await page.getByRole('button', { name: /Continue to studio/ }).click();
+  await page.getByRole('button', { name: /Continue to FIDA/ }).click();
   await page.getByRole('button', { name: 'Open workspace for Browser-tested analyst', exact: true }).click();
   assert.equal(await sourceInput.inputValue(), reportId);
   assert.equal(await page.getByLabel('Source type for GUID', { exact: true }).inputValue(), 'Semantic model');
@@ -274,7 +323,7 @@ try {
   await page.getByText('Published personally · v1.0.0', { exact: true }).waitFor();
   await page.screenshot({ path: 'test-results/published-test-double.png', fullPage: true });
   assert.equal(await page.getByRole('button', { name: 'Manage sharing', exact: true }).count(), 0);
-  await page.getByLabel('Deployment mode', { exact: true }).selectOption('shared');
+  await page.getByRole('radio', { name: 'Shareable — selected people', exact: true }).check();
   assert.equal(await page.getByRole('button', { name: 'Manage sharing', exact: true }).count(), 0);
   await page.getByRole('button', { name: 'Publish to Copilot', exact: true }).click();
   await page.getByText('Shareable · Grant recipients separately', { exact: true }).waitFor();
@@ -298,19 +347,19 @@ try {
   await page.getByText('Sharing change completed', { exact: true }).waitFor();
   await page.getByRole('button', { name: 'Done', exact: true }).click();
   await page.getByRole('button', { name: 'Manage sharing', exact: true }).click();
-  await page.getByText('Recipients recorded by Studio (2)', { exact: true }).waitFor();
+  await page.getByText('Recipients recorded by FIDA (2)', { exact: true }).waitFor();
   await page.getByLabel('Access change', { exact: true }).selectOption('remove');
   await page.getByLabel('User or group emails', { exact: true }).fill('person@contoso.com');
   await page.getByRole('button', { name: 'Confirm access change', exact: true }).click();
   await page.getByText('Sharing change completed', { exact: true }).waitFor();
   await page.getByRole('button', { name: 'Done', exact: true }).click();
   await page.getByRole('button', { name: 'Manage sharing', exact: true }).click();
-  await page.getByText('Recipients recorded by Studio (1)', { exact: true }).waitFor();
+  await page.getByText('Recipients recorded by FIDA (1)', { exact: true }).waitFor();
   await page.getByRole('button', { name: 'Close sharing', exact: true }).click();
-  await page.getByLabel('Deployment mode', { exact: true }).selectOption('personal');
+  await page.getByRole('radio', { name: 'Personal — just me', exact: true }).check();
   await page.getByText('Published personally · v1.0.0', { exact: true }).waitFor();
   assert.equal(await page.getByRole('button', { name: 'Manage sharing', exact: true }).count(), 0);
-  await page.getByLabel('Deployment mode', { exact: true }).selectOption('shared');
+  await page.getByRole('radio', { name: 'Shareable — selected people', exact: true }).check();
   await page.getByRole('button', { name: 'Save draft', exact: true }).click();
   assert.equal(app.state.calls.filter(args => args[0] === 'share').length, 2, 'Switching modes must not change existing access.');
   await page.setViewportSize({ width: 390, height: 844 });
@@ -321,7 +370,7 @@ try {
   assert.equal(await page.getByRole('button', { name: 'Sign out', exact: true }).isVisible(), true);
   await page.keyboard.press('Escape');
   await page.goto(`${app.base}/?scoutTheme=dark`);
-  await page.getByRole('button', { name: /Continue to studio/ }).waitFor();
+  await page.getByRole('button', { name: /Continue to FIDA/ }).waitFor();
   assert.equal(await page.locator('html').getAttribute('data-theme'), 'dark');
   await checkPalette(page);
   await page.screenshot({ path: 'test-results/mobile-dark-sign-in.png', fullPage: true });

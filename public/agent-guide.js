@@ -1,7 +1,7 @@
 const stages = [
   {
     title: 'User question', icon: 'people', tone: 'source',
-    detail: 'The user selects the published agent in Microsoft 365 Copilot and asks a business question.',
+    detail: 'The user selects the published agent in Microsoft Copilot and asks a business question.',
     label: 'Example prompt',
     example: 'How did sales change last quarter?'
   },
@@ -27,7 +27,7 @@ const stages = [
 
 const sources = [
   { title: 'Fabric IQ overview', url: 'https://learn.microsoft.com/fabric/iq/overview' },
-  { title: 'Fabric IQ in Microsoft 365 Copilot', url: 'https://learn.microsoft.com/fabric/iq/connectors/microsoft-365-copilot-overview' },
+  { title: 'Fabric IQ in Microsoft Copilot', url: 'https://learn.microsoft.com/fabric/iq/connectors/microsoft-365-copilot-overview' },
   { title: 'Declarative agents', url: 'https://learn.microsoft.com/plugins/overview-declarative-agent' },
   { title: 'Fabric data agent concepts', url: 'https://learn.microsoft.com/fabric/data-science/concept-data-agent' },
   { title: 'Data agent sources and configuration', url: 'https://learn.microsoft.com/fabric/data-science/data-agent-add-datasources' },
@@ -37,7 +37,7 @@ const sources = [
 const differences = [
   {
     title: 'Agent definition', sources: [2, 3],
-    here: 'A Microsoft 365 declarative agent package. This app configures its instructions, skills and Fabric IQ action; Microsoft 365 Copilot provides the models and orchestration.',
+    here: 'A declarative agent package for Microsoft Copilot. This app configures its instructions, skills and Fabric IQ action; Microsoft Copilot provides the models and orchestration.',
     dataAgent: 'A data agent item configured in a Fabric workspace, with its own data sources and instructions for conversational data analysis.'
   },
   {
@@ -57,7 +57,7 @@ const differences = [
   },
   {
     title: 'Publishing and use', sources: [3, 5],
-    here: 'The current app publishes personally to Microsoft 365 Copilot with Agents Toolkit and exports project/package ZIPs. It does not create or publish a Fabric data agent item.',
+    here: 'FIDA publishes personal or shareable agents to Microsoft Copilot with Agents Toolkit and exports project/package ZIPs. It does not create or publish a Fabric data agent item.',
     dataAgent: 'Publish and share the Fabric item, optionally publish it to the Microsoft Copilot Agent Store, or integrate it with Copilot Studio and Foundry. It is not limited to the Fabric chat experience.'
   }
 ];
@@ -98,7 +98,7 @@ export function defineAgentGuide(icon) {
       this.innerHTML = `<section class="agent-guide" aria-labelledby="${this.guideId}-title">
         <header class="guide-heading"><span class="eyebrow">About declarative agents</span>
           <h2 id="${this.guideId}-title">What is a declarative agent?</h2>
-          <p>A task-specific configuration of Microsoft 365 Copilot. You supply instructions, knowledge sources and actions; Microsoft provides the underlying models and orchestration.</p>
+          <p>A task-specific configuration of Microsoft Copilot. You supply instructions, knowledge sources and actions; Microsoft provides the underlying models and orchestration.</p>
           <p>Use one to apply the same business context across conversations, instead of including it in every prompt. This app configures Power BI sources, instructions and skills, then publishes the agent for use in Copilot. Data answering is powered by Fabric IQ.</p>
         </header>
         <div class="guide-walkthrough">
@@ -134,7 +134,7 @@ export function defineAgentGuide(icon) {
         <footer class="guide-footer"><p>Configuration does not train a new model or grant data access. Licensing and tenant policies still apply. Validate the agent’s answers against known results.</p><a href="https://learn.microsoft.com/plugins/overview-declarative-agent" target="_blank" rel="noopener noreferrer">Microsoft documentation ${icon('arrow')}</a></footer>
         <section class="agent-comparison" aria-labelledby="${this.guideId}-comparison-title">
           <header class="comparison-heading"><span class="eyebrow">Choosing an approach</span><h2 id="${this.guideId}-comparison-title">How is this different from Fabric Data Agent?</h2>
-            <p>This app builds a Microsoft 365 declarative agent that uses Fabric IQ for Power BI data answers. Fabric Data Agent is a separate Fabric item, also part of Fabric IQ. Both can be used from Microsoft 365 Copilot. <a href="${sources[0].url}" target="_blank" rel="noopener noreferrer" aria-label="Fabric IQ overview, comparison source 1">[1]</a></p>
+            <p>FIDA builds a declarative agent that uses Fabric IQ for Power BI data answers. Fabric Data Agent is a separate Fabric item, also part of Fabric IQ. Both can be used from Microsoft Copilot. <a href="${sources[0].url}" target="_blank" rel="noopener noreferrer" aria-label="Fabric IQ overview, comparison source 1">[1]</a></p>
           </header>
           <ol class="comparison-list">${differences.map((difference, index) => `<li>
             <h3><span class="comparison-number" aria-hidden="true">0${index + 1}</span>${difference.title}<span class="comparison-citations">${difference.sources.map(source => `<a href="${sources[source].url}" target="_blank" rel="noopener noreferrer" aria-label="${sources[source].title}, source for ${difference.title.toLowerCase()}">[${source + 1}]</a>`).join(' ')}</span></h3>

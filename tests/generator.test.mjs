@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { generateFiles, normalizeProject, parsePowerBiUrl, validateProject } from '../lib/generator.mjs';
+import { generateFiles, newProject, normalizeProject, parsePowerBiUrl, validateProject } from '../lib/generator.mjs';
 import { parseAccount, redact } from '../lib/toolkit.mjs';
 import { validProject, reportId, workspaceId, titleId } from './fixtures.mjs';
 
@@ -64,7 +64,7 @@ test('checks duplicates, required publisher URLs and final instruction budget', 
   assert.match(validateProject({ ...project, skills: [...project.skills, ...project.skills] }).errors.join(), /duplicated/);
 });
 
-test('generates real source routing, skill references and a personal-by-default lifecycle while excluding secrets', () => {
+test('generates real source routing, skill references and the chosen personal lifecycle while excluding secrets', () => {
   const project = validProject();
   const files = generateFiles(project, { M365_TITLE_ID: titleId, TEAMS_APP_ID: reportId, SECRET: 'never-export', ACCESS_TOKEN: 'never-export' });
   const agent = JSON.parse(files['appPackage/declarativeAgent.json']);
@@ -79,6 +79,44 @@ test('generates real source routing, skill references and a personal-by-default 
   assert.doesNotMatch(files['m365agents.yml'], /scope: tenant|teamsApp\/publishAppPackage/);
   project.skills[0].recipes = '';
   assert.equal(generateFiles(project)['appPackage/skills/sales-review/references/dax-recipes.md'], undefined);
+});
+
+test('new projects require an explicit deployment mode but retain a saved selection', () => {
+  assert.equal(newProject().deploymentScope, null);
+  const project = normalizeProject({ ...validProject(), deploymentScope: null });
+  assert.equal(project.deploymentScope, null);
+  assert.match(validateProject(project).errors.join(), /Choose Personal or Shareable/);
+  assert.throws(() => generateFiles(project), /Choose Personal or Shareable/);
+  const selected = normalizeProject({ ...project, deploymentScope: 'shared' }, project);
+  const { deploymentScope, ...partial } = selected;
+  assert.equal(normalizeProject(partial, selected).deploymentScope, deploymentScope);
+});
+
+test('multi-source routing is optional, persisted and exported alongside legacy source guidance', () => {
+  const project = validProject();
+  project.reports.push({ name: 'Finance', url: workspaceId, type: 'Semantic model', description: 'Recognized revenue uses posting dates.' });
+  let normalized = normalizeProject(project);
+  let check = validateProject(normalized);
+  assert.equal(check.valid, true);
+  assert.equal(check.warnings.filter(warning => warning.includes('explicit routing instructions')).length, 2);
+  const legacy = generateFiles(normalized)['appPackage/agent_instructions.md'];
+  assert.match(legacy, /Recognized revenue uses posting dates/);
+  project.reports[0].routing = 'Use for booked orders | exclude recognized revenue.\nUse Finance for revenue.';
+  project.reports[1].routing = 'Use for recognized revenue; prefer this source over Sales for revenue questions.';
+  normalized = normalizeProject(project);
+  assert.equal(normalized.reports[0].routing, project.reports[0].routing);
+  check = validateProject(normalized);
+  assert.equal(check.valid, true);
+  assert.equal(check.warnings.filter(warning => warning.includes('explicit routing instructions')).length, 0);
+  const instructions = generateFiles(normalized)['appPackage/agent_instructions.md'];
+  assert.ok(instructions.includes('Routing: Use for booked orders \\| exclude recognized revenue. Use Finance for revenue.'));
+  assert.match(instructions, /Source guidance: Use Sales Amount for booked sales/);
+  assert.match(instructions, /prefer this source over Sales for revenue questions/);
+  assert.match(instructions, /If sources overlap and no precedence is specified, ask for clarification/);
+  assert.throws(() => normalizeProject({ ...project, reports: [{ ...project.reports[0], routing: 'x'.repeat(1001) }] }), /routing instructions.*1000/);
+  assert.throws(() => normalizeProject({ ...project, reports: [{ ...project.reports[0], routing: '${{SECRET}}' }] }), /substitution/);
+  assert.match(validateProject({ ...normalized, instructions: 'x'.repeat(7000) }).errors.join(), /8,000/);
+  assert.equal(validateProject(validProject()).warnings.some(warning => warning.includes('explicit routing instructions')), false);
 });
 
 test('preserves server-owned personal and shared identities when switching modes, including legacy projects', () => {

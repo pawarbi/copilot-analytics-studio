@@ -12,7 +12,7 @@ export const sharedTitleId = 'U_87654321-4321-4321-8321-210987654321';
 
 export function validProject() {
   return {
-    ...newProject(), name: 'Sales analyst',
+    ...newProject(), name: 'Sales analyst', deploymentScope: 'personal',
     developer: { name: 'Contoso', website: 'https://contoso.com', privacy: 'https://contoso.com/privacy', terms: 'https://contoso.com/terms' },
     reports: [{ name: 'Sales', url: `https://app.powerbi.com/groups/${workspaceId}/reports/${reportId}/ReportSection`, description: 'Use Sales Amount for booked sales; use order dates.' }],
     skills: [{ name: 'sales-review', description: 'Use for sales rankings.', instructions: 'Prefer [Sales Amount]. Shares use all territories as the denominator.', recipes: 'EVALUATE ROW("Sales", [Sales Amount])' }]

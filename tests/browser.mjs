@@ -46,7 +46,8 @@ try {
   const requestsBeforeGuide = apiRequests.length;
   await page.clock.install();
   await guide.getByRole('button', { name: 'Play example', exact: true }).click();
-  const firstDot = guide.locator('.flow-edge.is-active .flow-dot').first();
+  const firstDot = guide.locator('.flow-dot');
+  assert.equal(await firstDot.count(), 1, 'A request must have exactly one processing circle.');
   assert.equal(await firstDot.evaluate(dot => getComputedStyle(dot).animationPlayState), 'running');
   const beforeMotion = await firstDot.evaluate(dot => getComputedStyle(dot).offsetDistance);
   await new Promise(resolve => setTimeout(resolve, 200));
@@ -54,14 +55,19 @@ try {
   await page.clock.runFor(3600);
   assert.match(await guide.getByRole('tab', { selected: true }).textContent(), /Instructions & skills/);
   await guide.getByRole('button', { name: 'Pause example', exact: true }).click();
-  const pausedDots = guide.locator('.flow-edge.is-active .flow-dot');
-  assert.equal(await pausedDots.count(), 3, 'Guidance must fan out to the three configured reports.');
+  const pausedDots = guide.locator('.flow-dot');
+  assert.equal(await pausedDots.count(), 1, 'Routing must not duplicate the request across branches.');
+  assert.equal(await guide.locator('.flow-edge.is-active').count(), 1, 'Guidance must select only the Sales branch.');
   assert.equal(await pausedDots.first().evaluate(dot => getComputedStyle(dot).animationPlayState), 'paused');
   const pausedPosition = await pausedDots.first().evaluate(dot => getComputedStyle(dot).offsetDistance);
   await new Promise(resolve => setTimeout(resolve, 200));
   assert.equal(await pausedDots.first().evaluate(dot => getComputedStyle(dot).offsetDistance), pausedPosition, 'Pausing must hold the processing circles in place.');
   await page.clock.runFor(7200);
   assert.match(await guide.getByRole('tab', { selected: true }).textContent(), /Instructions & skills/, 'Pausing must stop the walkthrough.');
+  await guide.getByRole('tab', { name: /Power BI action/ }).click();
+  assert.equal(await guide.locator('.flow-dot').count(), 1, 'The same single request must traverse retrieval and return.');
+  assert.deepEqual(await guide.locator('.flow-node.is-active').evaluateAll(nodes => nodes.map(node => node.dataset.flowNode)), ['report-0', 'model-0']);
+  assert.equal(await guide.locator('[data-flow-route="false"].is-active, [data-flow-route="false"].is-complete').count(), 0, 'Unused Finance and Operations routes must remain inactive.');
   await guide.getByRole('tab', { selected: true }).focus();
   await page.keyboard.press('End');
   assert.match(await guide.getByRole('tab', { selected: true }).textContent(), /Response/);
@@ -71,6 +77,7 @@ try {
   await guide.getByRole('button', { name: 'Play example', exact: true }).click();
   await page.clock.runFor(11000);
   await guide.getByRole('button', { name: 'Replay example', exact: true }).waitFor();
+  assert.equal(await guide.locator('.flow-dot.is-arrived').count(), 1, 'Only one circle should arrive at the answer.');
   assert.equal(apiRequests.length, requestsBeforeGuide, 'The illustration must not query data or change the account.');
   await page.screenshot({ path: 'test-results/sign-in.png', fullPage: true });
   for (const width of [320, 390, 768, 1440]) {
@@ -89,7 +96,7 @@ try {
   assert.equal(new Set(guideIds).size, guideIds.length, 'Guide instances must have distinct accessible IDs.');
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await dialogGuide.getByRole('button', { name: 'Play example', exact: true }).click();
-  assert.equal(await dialogGuide.locator('.flow-edge.is-active .flow-dot').first().evaluate(element => getComputedStyle(element).animationName), 'none');
+  assert.equal(await dialogGuide.locator('.flow-dot').evaluate(element => getComputedStyle(element).animationName), 'none');
   await page.keyboard.press('Escape');
   await dialogGuide.locator('[data-guide-play]').filter({ hasText: 'Play example' }).waitFor({ state: 'attached' });
   await page.clock.runFor(4000);

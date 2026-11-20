@@ -5,7 +5,7 @@ A local web application for creating and personally publishing Microsoft 365 dec
 ## Features
 
 - Configure Power BI reports and semantic models.
-- Explain artifact grounding with an animated request flow through agent guidance, three example Power BI reports and their semantic models.
+- Explain artifact grounding with one animated request routed through agent guidance to a relevant Power BI report and semantic model, with other configured sources shown alongside.
 - Edit agent instructions and use starter templates, behavior presets and reusable skills.
 - Import SKILL.md files and edit supporting reference material.
 - Preview generated files and export project source.

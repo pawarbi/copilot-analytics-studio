@@ -3,7 +3,7 @@ const stages = [
     title: 'User question', icon: 'people', tone: 'source',
     detail: 'The user selects the published agent in Microsoft 365 Copilot and asks a business question.',
     label: 'Example prompt',
-    example: 'How did sales, gross margin and order backlog change last quarter?'
+    example: 'How did sales change last quarter?'
   },
   {
     title: 'Instructions & skills', icon: 'pen', tone: 'rules',
@@ -15,13 +15,13 @@ const stages = [
     title: 'Power BI action', icon: 'source', tone: 'source',
     detail: 'The agent selects relevant configured artifacts and calls Fabric IQ’s AskPowerBI action. Reports use their underlying semantic models; a configured model can also be queried directly. Existing Power BI permissions apply.',
     label: 'Data request',
-    example: 'The three branches show an example source configuration, not three mandatory queries. Report-to-model arrows show the underlying data relationships.'
+    example: 'This example routes one request to the Sales report and its semantic model. Finance and Operations remain available but are not used for this question.'
   },
   {
     title: 'Response', icon: 'file', tone: 'expertise',
     detail: 'Copilot composes the answer using results from the selected artifacts, guided by the instructions and relevant skills. The data comes from Power BI, not just the model’s general knowledge.',
     label: 'Expected format',
-    example: 'A comparison of sales, gross margin and backlog, with the reporting period and source references. Validate the figures against known results.'
+    example: 'A sales comparison with the reporting period and a reference to the Sales source. Validate the figures against known results.'
   }
 ];
 
@@ -66,10 +66,10 @@ export function defineAgentGuide(icon) {
         </header>
         <div class="guide-walkthrough">
           <div class="guide-walkthrough-heading"><div><h3>How a request uses your selected data</h3><p>Example configuration. No live queries or results.</p></div><button type="button" class="btn small" data-guide-play>Play example</button></div>
-          <div class="grounding-map" role="group" aria-label="Request flows through agent guidance to three Power BI reports and their semantic models, then to a grounded answer">
+          <div class="grounding-map" role="group" aria-label="One request follows agent guidance to the Sales report and semantic model, then to a grounded answer. Two other report and model pairs remain available.">
             <svg class="flow-connections" aria-hidden="true" focusable="false"></svg>
             <div class="flow-node flow-request tone-source" data-flow-node="request" data-flow-stage="0">
-              <span class="flow-node-icon">${icon('people')}</span><strong>Request</strong><p>How did sales, margin and backlog change last quarter?</p>
+              <span class="flow-node-icon">${icon('people')}</span><strong>Request</strong><p>How did sales change last quarter?</p>
             </div>
             <div class="flow-node flow-agent tone-rules" data-flow-node="agent" data-flow-stage="1">
               <span class="flow-node-label">Declarative agent</span><strong>Instructions + skills</strong>
@@ -80,14 +80,14 @@ export function defineAgentGuide(icon) {
               <div class="flow-artifacts-title"><img src="/icons/power_bi_32_color.svg" width="20" height="20" alt="">Selected Power BI artifacts</div>
               <span class="flow-column-label flow-reports-label">Reports</span><span class="flow-column-label flow-models-label">Semantic models</span>
               ${['Sales', 'Finance', 'Operations'].map((name, index) => `
-                <div class="flow-node flow-report flow-row-${index} tone-source" data-flow-node="report-${index}" data-flow-stage="2"><img src="/icons/report_32_item.svg" width="28" height="28" alt="Power BI report"><strong>${name}</strong><span>Report</span></div>
-                <div class="flow-node flow-model flow-row-${index} tone-source" data-flow-node="model-${index}" data-flow-stage="2"><img src="/icons/semantic_model_32_item.svg" width="28" height="28" alt="Power BI semantic model"><strong>${name}</strong><span>Semantic model</span></div>`).join('')}
+                <div class="flow-node flow-report flow-row-${index} tone-source" data-flow-node="report-${index}" data-flow-stage="2" data-flow-route="${index === 0}"><img src="/icons/report_32_item.svg" width="28" height="28" alt="Power BI report"><strong>${name}</strong><span>Report</span></div>
+                <div class="flow-node flow-model flow-row-${index} tone-source" data-flow-node="model-${index}" data-flow-stage="2" data-flow-route="${index === 0}"><img src="/icons/semantic_model_32_item.svg" width="28" height="28" alt="Power BI semantic model"><strong>${name}</strong><span>Semantic model</span></div>`).join('')}
             </div>
             <div class="flow-node flow-answer tone-expertise" data-flow-node="answer" data-flow-stage="3">
-              <span class="flow-node-icon">${icon('file')}</span><strong>Answer</strong><p>Figures, reporting period and source references</p><span class="flow-answer-source">${icon('check')}Selected data</span>
+              <span class="flow-node-icon">${icon('file')}</span><strong>Answer</strong><p>Figures, reporting period and source references</p><span class="flow-answer-source">${icon('check')}Sales model</span>
             </div>
           </div>
-          <p class="flow-grounding-note">${icon('source')}<span>The selected artifacts supply the data. Instructions and skills guide retrieval and the response. Only relevant sources are queried.</span></p>
+          <p class="flow-grounding-note">${icon('source')}<span>One request follows the Sales route in this example. The other configured sources remain available. Instructions and skills guide retrieval and the response.</span></p>
           <div class="guide-track" role="tablist" aria-label="Example stages">${stages.map((stage, index) => `<button type="button" role="tab" class="guide-step tone-${stage.tone}" id="${this.guideId}-step-${index}" data-guide-step="${index}" aria-controls="${this.guideId}-panel" aria-selected="${index === this.step}" tabindex="${index === this.step ? 0 : -1}"><span class="guide-step-icon">${icon(stage.icon)}</span><span><small>${index + 1}</small>${stage.title}</span></button>`).join('')}</div>
           <div class="guide-detail" id="${this.guideId}-panel" role="tabpanel" tabindex="0">
             <div class="guide-explanation" aria-live="polite" aria-atomic="true"><span class="eyebrow" data-guide-position></span><h4 data-guide-title></h4><p data-guide-detail></p></div>
@@ -127,7 +127,7 @@ export function defineAgentGuide(icon) {
           y: (side === 'top' ? box.top : side === 'bottom' ? box.bottom : box.top + box.height / 2) - bounds.top
         };
       };
-      const connect = (from, to, stage, phase = '') => {
+      const connect = (from, to, stage, onRoute = true) => {
         let a = point(from, 'right'), b = point(to, 'left'), d;
         if (!vertical) {
           const middle = (a.x + b.x) / 2;
@@ -145,25 +145,37 @@ export function defineAgentGuide(icon) {
         } else {
           d = `M ${a.x} ${a.y} H ${b.x}`;
         }
-        return { stage, phase, d };
+        return { stage, onRoute, d };
       };
       const edges = [connect('request', 'agent', 0)];
       for (let index = 0; index < 3; index++) {
-        edges.push(connect('agent', `report-${index}`, 1));
-        edges.push(connect(`report-${index}`, `model-${index}`, 2, 'read'));
-        edges.push(connect(`model-${index}`, 'answer', 2, 'return'));
+        edges.push(connect('agent', `report-${index}`, 1, index === 0));
+        edges.push(connect(`report-${index}`, `model-${index}`, 2, index === 0));
+        edges.push(connect(`model-${index}`, 'answer', 2, index === 0));
       }
+      this.routePaths = [edges[0].d, edges[1].d, `${edges[2].d} ${edges[3].d.replace(/^M /, 'L ')}`];
       const svg = map.querySelector('.flow-connections');
       svg.setAttribute('viewBox', `0 0 ${bounds.width} ${bounds.height}`);
-      svg.innerHTML = `<defs><marker id="${this.guideId}-arrow" viewBox="0 0 8 8" refX="8" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 1 1 L 7 4 L 1 7" class="flow-arrowhead"/></marker></defs>${edges.map(edge => `<g class="flow-edge ${edge.phase}" data-flow-stage="${edge.stage}"><path class="flow-wire" d="${edge.d}" marker-end="url(#${this.guideId}-arrow)"/><circle class="flow-dot" r="4"/></g>`).join('')}`;
-      svg.querySelectorAll('.flow-dot').forEach((dot, index) => { dot.style.offsetPath = `path("${edges[index].d}")`; });
+      svg.innerHTML = `<defs><marker id="${this.guideId}-arrow" viewBox="0 0 8 8" refX="8" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 1 1 L 7 4 L 1 7" class="flow-arrowhead"/></marker></defs>${edges.map(edge => `<g class="flow-edge" data-flow-stage="${edge.stage}" data-flow-route="${edge.onRoute}"><path class="flow-wire" d="${edge.d}" marker-end="url(#${this.guideId}-arrow)"/></g>`).join('')}`;
       this.updateFlow();
     }
 
     updateFlow() {
       for (const element of this.querySelectorAll('[data-flow-stage]')) {
-        element.classList.toggle('is-active', Number(element.dataset.flowStage) === this.step);
-        element.classList.toggle('is-complete', Number(element.dataset.flowStage) < this.step);
+        const onRoute = element.dataset.flowRoute !== 'false';
+        element.classList.toggle('is-active', onRoute && Number(element.dataset.flowStage) === this.step);
+        element.classList.toggle('is-complete', onRoute && Number(element.dataset.flowStage) < this.step);
+      }
+      const svg = this.querySelector('.flow-connections');
+      const previous = svg.querySelector('.flow-dot');
+      if (this.routePaths && previous?.dataset.step !== String(this.step)) {
+        const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        dot.setAttribute('class', `flow-dot${this.step === stages.length - 1 ? ' is-arrived' : ''}`);
+        dot.setAttribute('r', '4');
+        dot.dataset.step = String(this.step);
+        dot.style.offsetPath = `path("${this.routePaths[Math.min(this.step, 2)]}")`;
+        if (previous) previous.replaceWith(dot);
+        else svg.append(dot);
       }
     }
 

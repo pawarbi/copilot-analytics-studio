@@ -10,12 +10,13 @@ export function fakeMsal(config) {
   });
   const key = scopes => scopes.filter(scope => !['openid', 'profile', 'offline_access'].includes(scope)).sort().join(' ');
   const client = {
-    allConsented: false, nonceOverride: null, wrongSilentAccount: false, requests: [],
+    allConsented: false, nonceOverride: null, wrongSilentAccount: false, requests: [], codeRequests: [],
     async getAuthCodeUrl(request) {
       lastRequest = request; client.requests.push(request);
       return `https://login.microsoftonline.com/organizations/oauth2/v2.0/authorize?${new URLSearchParams({ state: request.state, nonce: request.nonce })}`;
     },
     async acquireTokenByCode(request) {
+      client.codeRequests.push(request);
       currentAccount = accountFor(request.code);
       consented.add(key(request.scopes));
       return {

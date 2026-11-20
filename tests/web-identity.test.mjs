@@ -4,6 +4,24 @@ import { createWebIdentity, PUBLISHING_SCOPES } from '../lib/web-identity.mjs';
 import { reportId, workspaceId } from './fixtures.mjs';
 import { clientId, fakeMsal } from './identity-fixtures.mjs';
 
+test('sign-in and each publishing consent exchange supply the original nonce to MSAL', async () => {
+  let client;
+  const identity = createWebIdentity({
+    clientId, clientSecret: 'isolated-test-fixture', origin: 'https://fida.test',
+    clientFactory: config => client = fakeMsal(config)
+  });
+  let redirect = await identity.begin();
+  for (let step = 0; step <= PUBLISHING_SCOPES.length; step++) {
+    const url = new URL(redirect);
+    const nonce = url.searchParams.get('nonce');
+    assert.ok(nonce);
+    redirect = await identity.complete(new URLSearchParams({ state: url.searchParams.get('state'), code: 'alice' }));
+    assert.equal(client.codeRequests[step].nonce, nonce, 'MSAL must receive the expected nonce before it validates the ID token.');
+    if (step === 0) redirect = await identity.connectPublishing();
+  }
+  assert.equal(redirect, null);
+});
+
 test('hosted OAuth uses multitenant PKCE and rejects mismatched, replayed and expired state', async () => {
   let clock = 0, client, config;
   const identity = createWebIdentity({

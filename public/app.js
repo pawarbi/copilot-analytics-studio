@@ -110,9 +110,9 @@ function connectionBadge() {
 
 function renderSignIn() {
   return `<div class="welcome"><header class="welcome-header">${brand()}<div class="actions">${connectionBadge()}${accountTools()}</div></header>
-    <main class="welcome-main"><section class="welcome-story"><span class="eyebrow">Microsoft 365 declarative agents</span><h1>Build agents for<br>Microsoft 365<br>Copilot.</h1>
-      <p class="lead">Configure Power BI sources, instructions and skills. Validate the package and publish to your Copilot account.</p>
+    <main class="welcome-main"><section class="welcome-story"><span class="eyebrow">Microsoft 365 Copilot</span><h1>Declarative agents<br>for Microsoft Copilot</h1>
       ${fabricCredit()}
+      <p class="lead">Use your Power BI reports and semantic models to answer business questions. Add instructions and reusable skills, then publish to Microsoft Copilot.</p>
       ${notebookScene()}
       <div class="welcome-links"><button class="text-btn" data-action="agent-guide">${icon('info')} How it works</button><button class="text-btn" data-library="packs">${icon('book')} Browse templates ${icon('arrow')}</button></div>
     </section><section class="signin-card card" aria-labelledby="signin-title"><span class="signin-kicker">${icon('folder')} Account</span><h2 id="signin-title">${state.account ? 'Continue to Agent Studio' : 'Sign in'}</h2><p>Use your Microsoft 365 work or school account.</p>

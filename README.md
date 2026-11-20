@@ -20,7 +20,7 @@ Data answering is powered by **Fabric IQ** through the configured Power BI MCP a
 - Download a standalone installable ZIP for manual Teams custom-app upload, without FIDA publishing permissions or local CLI commands.
 - Validate and publish personal or shareable agents using Microsoft 365 Agents Toolkit.
 - Grant or remove chat access for specific users/groups on shareable deployments, and copy the returned sharing link.
-- Download incomplete drafts as ZIP backups and import their `fida-project.json` in a later session. Restoring creates a new draft and does not reconnect to an existing published agent.
+- Use **Export draft** in the project toolbar to back up even incomplete drafts, then import their `fida-project.json` in a later session. Restoring creates a new draft and does not reconnect to an existing published agent.
 
 ## Run locally
 
@@ -51,29 +51,51 @@ The included `render.yaml` defines one free Node web service, without a database
 
 `FIDA_HOSTED=true` enables hosted mode. `RENDER_EXTERNAL_URL` supplies the public HTTPS origin automatically. For a custom domain, add it in Render, configure the DNS records Render provides, set `FIDA_PUBLIC_ORIGIN` to that HTTPS origin, add its exact `/auth/callback` Web redirect URI in Entra, and redeploy. Only the configured origin is accepted; use its canonical link. Do not change the DNS records serving an existing blog. Render Free supports custom domains and managed TLS.
 
-**Temporary storage:** download **draft ZIPs** before leaving. Sessions expire after 30 minutes idle (5 minutes before sign-in), after 8 hours absolutely, or on sign-out. Restarts, deployments and free-service sleep can also discard work. Published agents remain in Microsoft Copilot. Draft ZIPs contain maker-authored content but no server-owned deployment identities or authentication cache; extract the ZIP and use **Import draft** to select `fida-project.json`. For local updates to an existing deployment, also export its **source ZIP after publishing**, which retains the approved deployment workspace.
+**Temporary storage:** use **Export draft** in the top-right project toolbar before leaving. This downloads `fida-draft-backup.zip`, a backup for restoring in FIDA, **not an app package for Teams**. Sessions expire after 30 minutes idle (5 minutes before sign-in), after 8 hours absolutely, or on sign-out. Restarts, deployments and free-service sleep can also discard work. Published agents remain in Microsoft Copilot. Draft backups contain maker-authored content but no server-owned deployment identities or authentication cache; extract the ZIP and use **Import draft** to select `fida-project.json`. For local updates to an existing deployment, also export its **source ZIP after publishing**, which retains the approved deployment workspace.
 
 The preview limits each process to 24 sessions, 10 projects per session, and one SDK publishing worker at a time. Free instances have limited memory: worker memory usage under a real publish has not been measured. A busy worker returns a retryable failure rather than starting another. An interrupted or timed-out operation may have made partial cloud changes; inspect Microsoft Copilot before retrying.
 
 Render's [free-service limits](https://render.com/docs/free), [custom domains](https://render.com/docs/custom-domains) and [Blueprint documentation](https://render.com/docs/infrastructure-as-code) describe current hosting behavior. No Render service is created merely by cloning this repository.
 
-## Manual upload without hosted publishing consent
+## Three publishing options
 
-In **Review & publish**, complete the required fields, select a deployment mode, and choose **Download installable ZIP**. This creates `fida-installable-agent.zip` with `manifest.json` at the ZIP root, a resolved app ID, inlined agent instructions, icons, the Fabric IQ MCP action and any configured skills. No publishing API or additional publishing-consent flow is invoked.
+The final **Review & publish** page presents three routes. Manual upload is recommended for personal installation. Direct publication can publish a shared version after any required hosted consent; running locally supports shared publication without authorizing FIDA's hosted Entra application.
 
-In Teams, open **Apps > Manage your apps > Upload an app > Upload a custom app**, select the ZIP **without extracting it**, and follow the installation dialog. This is different from **Submit an app to your org**, which requests organization approval. Tenant policies still apply, including [advanced package upload controls](https://learn.microsoft.com/copilot/manage/configure-copilot-advanced-package-uploads) for agents with actions/MCP, source permissions and licensing. Package validation does not prove that the agent is installed, that this tenant permits upload, or that its Power BI runtime queries succeed.
+### 1. Upload an installable ZIP (recommended for personal use)
 
-**Choose the right ZIP:** the installable ZIP is for Teams upload; **Export source** is a Toolkit project with `appPackage` and `env` folders, not an uploadable app; **Download draft ZIP** is a backup to restore into FIDA. Do not upload source or draft ZIPs in Teams.
+Complete the required agent and publisher fields and choose **Download installable ZIP**. No Personal/Shareable choice is required. This creates `fida-installable-agent.zip` with `manifest.json` at the ZIP root, a resolved app ID, inlined agent instructions, icons, the Fabric IQ MCP action and any configured skills. No publishing API or additional publishing-consent flow is invoked; existing Microsoft sign-in is still required.
+
+1. In Teams, click **+ (Apps)** on the left, then the **gear icon** at the top right to open **Manage your apps > Apps**. Some versions show **Apps > Manage your apps** directly.
+2. Select **Upload an app > Upload a custom app**.
+3. Choose `fida-installable-agent.zip` **without extracting it**, then select **Add**.
+4. Open **Microsoft Copilot > Agents**. The agent may take a few minutes to appear; check **All agents** if needed.
+
+This is different from **Submit an app to your org**, which requests organization approval. Tenant policies still apply, including [advanced package upload controls](https://learn.microsoft.com/copilot/manage/configure-copilot-advanced-package-uploads) for agents with actions/MCP, source permissions and licensing. Package validation does not prove that the agent is installed, that this tenant permits upload, or that its Power BI runtime queries succeed.
+
+**Choose the right file:** **Download installable ZIP** is the only download to use for this Teams upload. **Export draft** in the project toolbar downloads `fida-draft-backup.zip` for restoration in FIDA only. **Export source ZIP**, under **Advanced: Toolkit source and file preview**, downloads an editable Toolkit project with `appPackage` and `env` folders, not an uploadable app. Do not upload source or draft ZIPs in Teams.
 
 Manual upload has its own app identity, stable while downloading from the same FIDA project, and does not inherit direct-publishing deployment IDs or sharing grants. Direct-publishing Personal/Shareable selections do not grant an audience to manual uploads. Keep the installable ZIP for future manual updates and increment the package version while preserving its manifest app ID. A restored draft creates a new project and a new manual app identity. FIDA does not track the installation or sharing of manually uploaded packages.
 
-## Direct publishing and sharing
+### 2. Publish directly from FIDA
 
-In **Review & publish**, explicitly choose **Personal — just me** or **Shareable — selected people**, then confirm publishing. Both radio options are visible; neither is selected for a new project. Your choice is saved, and existing projects retain their saved mode. The modes use separate workspaces and published identities. Existing personal projects continue using their original workspace. Switching the draft mode does not delete or revoke access to either published agent.
+Hosted publication requests authorization for FIDA's publishing permissions. If the publishing organization requires administrator approval, its administrator must consent in that tenant. Approval is usually once per organization for the approved permissions, not once per agent; new permissions, revoked consent or policy changes can require further approval. Consent in the registration's home tenant does not approve other organizations. The current integration remains experimental as described above.
+
+In option 2, explicitly choose **Personal — just me** or **Shareable — selected people** under **Direct-publishing audience**, then confirm publishing. This choice applies to direct publishing and Toolkit source exports, not manual installation. Both radio options are visible; neither is selected for a new project. Your choice is saved, and existing projects retain their saved mode. The modes use separate workspaces and published identities. Existing personal projects continue using their original workspace. Switching the draft mode does not delete or revoke access to either published agent.
 
 After publishing a shareable agent, select **Manage sharing**. Enter up to 20 user or group email addresses and confirm **Add chat access** or **Remove chat access**. Copying the sharing link does not grant permissions. Recipient changes use the signed-in publishing account and the Toolkit's sharing commands; they do not grant editing rights or Power BI access. A group member can retain access through another group even after an individual grant is removed.
 
 The recipient list records only successful changes made through FIDA, not live service permissions or group membership. If a command fails or times out, inspect the log and actual access before retrying: partial service changes may have occurred. Tenant policies can block sharing. Organization-wide catalog submission is not implemented, and Copilot's native **Share agent** menu is not guaranteed.
+
+### 3. Run FIDA locally
+
+This is the recommended route for a shareable agent when avoiding authorization to FIDA's hosted application. It is not authentication-free: local publishing uses Microsoft Agents Toolkit authentication and remains subject to Toolkit consent, source access, licensing and tenant policies.
+
+1. Use **Export draft** to back up your hosted agent.
+2. Follow [Run locally](#run-locally) above to install Node.js and Git, clone the repository, run `npm ci` and start the app with `npm start`.
+3. Open http://127.0.0.1:4317 and sign in with your Microsoft work or school account.
+4. Extract `fida-draft-backup.zip`. In the local app, choose **Import draft** and select `fida-project.json`, or create a new agent. Restoring creates a new draft, not an update connection to an existing published agent.
+5. On **Review & publish**, choose **Shareable — selected people** in option 2 and confirm publication.
+6. Use **Manage sharing** to grant **Add chat access** to user/group emails and copy the sharing link. Recipients need their own source permissions and licenses.
 
 ## Validation
 

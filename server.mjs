@@ -228,9 +228,9 @@ export function createApp({ dataDir = join(ROOT, 'data'), toolkit = createToolki
         const draft = { format: 'fida-project', version: 1, project: { name, description, version, instructions, developer, reports, skills, deploymentScope } };
         const zip = zipSync({
           'fida-project.json': strToU8(JSON.stringify(draft, null, 2)),
-          'README.txt': strToU8('FIDA draft backup. Extract this ZIP, then choose Import draft in FIDA and select fida-project.json.\nRestoring creates a new draft, not a connection to an existing published agent. Published agents are not deleted when temporary drafts expire.\nTo preserve an existing deployment workspace for local updates, also export its source ZIP after publishing.\nhttps://github.com/pawarbi/copilot-analytics-studio\n')
+          'README.txt': strToU8('FIDA draft backup - NOT an installable app. Do not upload this ZIP to Teams.\nExtract this ZIP, then choose Import draft in FIDA and select fida-project.json.\nFor Teams upload, use Download installable ZIP on Review & publish instead.\nRestoring creates a new draft, not a connection to an existing published agent. Published agents are not deleted when temporary drafts expire.\nTo preserve an existing deployment workspace for local updates, also export its source ZIP after publishing.\nhttps://github.com/pawarbi/copilot-analytics-studio\n')
         });
-        res.writeHead(200, { 'Content-Type': 'application/zip', 'Content-Disposition': 'attachment; filename="fida-draft.zip"' }); return res.end(zip);
+        res.writeHead(200, { 'Content-Type': 'application/zip', 'Content-Disposition': 'attachment; filename="fida-draft-backup.zip"' }); return res.end(zip);
       }
       if (action === 'check' && req.method === 'GET') return json(res, 200, validateProject(project, { publish: true }));
       if (action === 'files' && req.method === 'GET') {

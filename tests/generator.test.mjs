@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { generateFiles, newProject, normalizeProject, parsePowerBiUrl, validateProject } from '../lib/generator.mjs';
+import { generateFiles, generateInstallableFiles, newProject, normalizeProject, parsePowerBiUrl, validateProject } from '../lib/generator.mjs';
 import { parseAccount, redact } from '../lib/toolkit.mjs';
 import { validProject, reportId, workspaceId, titleId } from './fixtures.mjs';
 
@@ -90,6 +90,19 @@ test('new projects require an explicit deployment mode but retain a saved select
   const selected = normalizeProject({ ...project, deploymentScope: 'shared' }, project);
   const { deploymentScope, ...partial } = selected;
   assert.equal(normalizeProject(partial, selected).deploymentScope, deploymentScope);
+});
+
+test('manual packages ignore direct-publishing audience without relaxing content validation or changing the draft', () => {
+  const project = { ...validProject(), deploymentScope: null };
+  const before = structuredClone(project);
+  const files = generateInstallableFiles(project);
+  assert.deepEqual(project, before);
+  for (const deploymentScope of ['personal', 'shared']) {
+    assert.deepEqual(generateInstallableFiles({ ...project, deploymentScope }), files, 'A direct-publishing choice must not affect a manual package.');
+  }
+  assert.throws(() => generateInstallableFiles({ ...project, reports: [] }), /at least one Power BI/);
+  assert.throws(() => generateInstallableFiles({ ...project, developer: { ...project.developer, privacy: '' } }), /Privacy policy/);
+  assert.throws(() => generateInstallableFiles({ ...project, instructions: 'x'.repeat(8000) }), /8,000/);
 });
 
 test('multi-source routing is optional, persisted and exported alongside legacy source guidance', () => {

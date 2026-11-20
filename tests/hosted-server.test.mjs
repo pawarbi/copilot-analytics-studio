@@ -98,7 +98,11 @@ test('hosted sessions isolate accounts, CSRF, drafts and source backups while al
   assert.deepEqual(await bob.json('/api/projects'), []);
   const draftResponse = await alice.call(`/api/projects/${project.id}/draft`);
   assert.equal(draftResponse.status, 200, 'Incomplete drafts can be downloaded without publisher details or a deployment choice.');
-  const backup = JSON.parse(strFromU8(unzipSync(new Uint8Array(await draftResponse.arrayBuffer()))['fida-project.json']));
+  assert.match(draftResponse.headers.get('content-disposition'), /fida-draft-backup\.zip/);
+  const draftFiles = unzipSync(new Uint8Array(await draftResponse.arrayBuffer()));
+  assert.match(strFromU8(draftFiles['README.txt']), /Do not upload this ZIP to Teams/);
+  assert.equal(draftFiles['manifest.json'], undefined, 'A backup must remain clearly separate from an installable package.');
+  const backup = JSON.parse(strFromU8(draftFiles['fida-project.json']));
   assert.equal(backup.project.deploymentScope, null);
   assert.equal(backup.project.id, undefined); assert.equal(backup.project.deployments, undefined);
   backup.project.id = project.id;
@@ -114,9 +118,11 @@ test('hosted publishing connects downstream permissions before creating any clou
   const app = await hostedFixture(); t.after(app.close);
   const user = await app.session(); await user.signIn('alice');
   let project = await user.json('/api/projects', { method: 'POST', body: {} });
-  project = await user.json(`/api/projects/${project.id}`, { method: 'PUT', body: { ...validProject(), revision: project.revision } });
+  project = await user.json(`/api/projects/${project.id}`, { method: 'PUT', body: { ...validProject(), deploymentScope: null, revision: project.revision } });
   assert.equal((await user.call(`/api/projects/${project.id}/installable`)).status, 200);
   assert.equal(app.clients[0].requests.length, 1, 'Manual package export must not request publishing consent.');
+  assert.equal((await user.json(`/api/projects/${project.id}`)).deploymentScope, null);
+  project = await user.json(`/api/projects/${project.id}`, { method: 'PUT', body: { ...project, deploymentScope: 'personal' } });
   const confirmation = { method: 'POST', body: { confirmPublish: true, scope: 'personal', revision: project.revision } };
   let { redirect } = await user.json(`/api/projects/${project.id}/publish`, confirmation);
   assert.ok(redirect);

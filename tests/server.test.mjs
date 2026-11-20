@@ -61,7 +61,7 @@ test('persists drafts, prevents lost updates, and exports previewed source witho
   assert.equal((await app.json('/projects'))[0].id, project.id);
 });
 
-test('does not publish or export new projects without a deployment choice', async t => {
+test('requires a deployment choice for direct publishing and source exports, but not manual installation', async t => {
   const app = await testApp(); t.after(app.close);
   const created = await app.json('/projects', { method: 'POST', body: {} });
   assert.equal(created.deploymentScope, null);
@@ -71,7 +71,10 @@ test('does not publish or export new projects without a deployment choice', asyn
   const exportResult = await app.request(`/projects/${project.id}/download`);
   assert.equal(exportResult.status, 400);
   assert.match((await exportResult.json()).error, /Choose Personal or Shareable/);
-  assert.equal((await app.request(`/projects/${project.id}/installable`)).status, 400);
+  const manual = await app.request(`/projects/${project.id}/installable`);
+  assert.equal(manual.status, 200);
+  assert.ok(unzipSync(new Uint8Array(await manual.arrayBuffer()))['manifest.json']);
+  assert.equal((await app.json(`/projects/${project.id}`)).deploymentScope, null, 'Manual downloads must not select a publishing audience.');
   const publish = await app.request(`/projects/${project.id}/publish`, { method: 'POST', body: { confirmPublish: true, scope: 'personal', revision: project.revision } });
   assert.equal(publish.status, 400);
   assert.equal(app.state.calls.some(args => args[0] === 'provision'), false);

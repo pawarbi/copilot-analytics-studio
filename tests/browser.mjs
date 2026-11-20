@@ -39,6 +39,14 @@ try {
   await checkPalette(page);
   const guide = page.locator('.welcome-guide agent-guide');
   await guide.getByRole('heading', { name: 'What is a declarative agent?', exact: true }).waitFor();
+  await page.getByRole('link', { name: 'Data answers powered by Fabric IQ', exact: true }).waitFor();
+  await guide.locator('.flow-artifacts').getByText('Fabric IQ', { exact: true }).waitFor();
+  assert.equal(await guide.locator('.flow-answer').getByRole('img', { name: 'Microsoft Copilot', exact: true }).count(), 1);
+  const comparison = guide.getByRole('region', { name: 'How is this different from Fabric Data Agent?', exact: true });
+  assert.equal(await comparison.locator('.comparison-list > li').count(), 5, 'The comparison must contain five distinct differences.');
+  assert.equal(await comparison.locator('.comparison-references a').count(), 6);
+  assert.equal(await comparison.locator('a').evaluateAll(links => links.every(link => new URL(link.href).hostname === 'learn.microsoft.com')), true, 'Product comparisons must link to the official documentation.');
+  assert.equal(await comparison.evaluate(element => element.getBoundingClientRect().top > element.closest('agent-guide').querySelector('.guide-walkthrough').getBoundingClientRect().bottom), true, 'The comparison belongs below the grounding illustration.');
   assert.equal(await guide.locator('.flow-report').count(), 3);
   assert.equal(await guide.locator('.flow-model').count(), 3);
   assert.equal(await guide.locator('.flow-wire').count(), 10, 'The diagram must connect the request, guidance, all three report/model pairs and the answer.');
@@ -85,12 +93,15 @@ try {
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true, `The front-page flow must fit a ${width}px viewport.`);
     const map = guide.locator('.grounding-map');
     assert.equal(await map.evaluate(element => element.scrollWidth <= element.clientWidth + 1), true, 'The grounding map must fit its container.');
+    assert.equal(await comparison.evaluate(element => element.scrollWidth <= element.clientWidth + 1), true, 'The sourced comparison must fit its container.');
     if (width === 390) await map.screenshot({ path: 'test-results/mobile-grounding-map.png' });
+    if (width === 390 || width === 1440) await comparison.screenshot({ path: `test-results/agent-comparison-${width}.png` });
   }
   await page.getByRole('button', { name: 'How it works', exact: true }).click();
   await page.getByRole('dialog', { name: 'About declarative agents', exact: true }).waitFor();
   const guideDialog = page.locator('#guide-dialog');
   const dialogGuide = guideDialog.locator('agent-guide');
+  assert.equal(await dialogGuide.locator('.comparison-list > li').count(), 5, 'The same comparison must be available inside the app.');
   assert.equal(await page.locator('agent-guide').count(), 2);
   const guideIds = await page.locator('agent-guide [id]').evaluateAll(elements => elements.map(element => element.id));
   assert.equal(new Set(guideIds).size, guideIds.length, 'Guide instances must have distinct accessible IDs.');

@@ -38,7 +38,8 @@ const paths = {
 };
 const icon = name => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name] ?? paths.info}</svg>`;
 defineAgentGuide(icon);
-const brand = () => `<div class="brand"><span class="brand-mark">${icon('book')}</span><div><strong>Agent Studio</strong><span>Power BI agents for Microsoft 365</span></div></div>`;
+const brand = () => `<div class="brand"><span class="brand-mark">${icon('book')}</span><div><strong>Agent Studio</strong><span>Power BI agents · Fabric IQ</span></div></div>`;
+const fabricCredit = () => `<a class="fabric-credit" href="https://learn.microsoft.com/fabric/iq/connectors/microsoft-365-copilot-overview" target="_blank" rel="noopener noreferrer"><img src="/icons/fabric_32_color.svg" width="22" height="22" alt=""><span>Data answers powered by <strong>Fabric IQ</strong></span>${icon('arrow')}</a>`;
 const packTone = id => id === 'sales' || id === 'customers' ? 'expertise' : id === 'finance' || id === 'executive' ? 'rules' : 'source';
 function notebookScene() {
   return `<div class="notebook-scene" aria-hidden="true">
@@ -111,6 +112,7 @@ function renderSignIn() {
   return `<div class="welcome"><header class="welcome-header">${brand()}<div class="actions">${connectionBadge()}${accountTools()}</div></header>
     <main class="welcome-main"><section class="welcome-story"><span class="eyebrow">Microsoft 365 declarative agents</span><h1>Build agents for<br>Microsoft 365<br>Copilot.</h1>
       <p class="lead">Configure Power BI sources, instructions and skills. Validate the package and publish to your Copilot account.</p>
+      ${fabricCredit()}
       ${notebookScene()}
       <div class="welcome-links"><button class="text-btn" data-action="agent-guide">${icon('info')} How it works</button><button class="text-btn" data-library="packs">${icon('book')} Browse templates ${icon('arrow')}</button></div>
     </section><section class="signin-card card" aria-labelledby="signin-title"><span class="signin-kicker">${icon('folder')} Account</span><h2 id="signin-title">${state.account ? 'Continue to Agent Studio' : 'Sign in'}</h2><p>Use your Microsoft 365 work or school account.</p>
@@ -154,7 +156,7 @@ function saveLabel() {
   return state.saving ? 'Saving…' : state.saveError ? 'Couldn’t save' : state.dirty ? 'Unsaved changes' : storageText();
 }
 function renderDashboard() {
-  return `<header class="workspace-intro"><div class="intro-copy"><span class="eyebrow">Personal workspace</span><h1>Agents</h1><p>Create and manage declarative agents<br>for Microsoft 365 Copilot.</p><button class="btn primary" data-action="new">${icon('plus')} Create an agent</button></div>${notebookScene()}</header>
+  return `<header class="workspace-intro"><div class="intro-copy"><span class="eyebrow">Personal workspace</span><h1>Agents</h1><p>Create and manage declarative agents<br>for Microsoft 365 Copilot.</p><button class="btn primary" data-action="new">${icon('plus')} Create an agent</button>${fabricCredit()}</div>${notebookScene()}</header>
     <div class="workspace-guide-link"><span>${icon('info')} A declarative agent configures Copilot with your sources, instructions and skills.</span><button class="text-btn" data-action="agent-guide">How it works ${icon('arrow')}</button></div>
     <section class="projects-section" aria-labelledby="projects-title"><div class="section-heading"><h2 id="projects-title">Projects <span class="counter">${state.projects.length}</span></h2><span class="section-note">${storageText()}</span></div>
     ${state.projects.length ? `<div class="project-list">${state.projects.map(p => `<article class="project-row tone-source"><span class="agent-document">${icon('file')}</span><div class="project-copy"><h3><button class="project-title" data-open="${esc(p.id)}">${esc(p.name)}</button></h3><p>${esc(p.description)}</p><div class="project-meta"><span>${p.reportCount} ${p.reportCount === 1 ? 'source' : 'sources'}</span><span>${p.skillCount} ${p.skillCount === 1 ? 'skill' : 'skills'}</span></div></div><div class="project-status"><span class="status-label ${p.deployment ? 'published' : ''}"><i></i>${p.deployment ? 'Published · Personal' : 'Draft'}</span><time datetime="${esc(p.updatedAt)}">Updated ${esc(new Date(p.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }))}</time></div><button class="btn small quiet project-open" data-open="${esc(p.id)}" aria-label="Open workspace for ${esc(p.name)}">${icon('arrow')}</button></article>`).join('')}</div>` : `<div class="first-agent-note"><span class="feature-icon tone-source">${icon('file')}</span><div><strong>No projects yet</strong><p>Create a project or select a template below.</p></div><button class="text-btn" data-action="new">Create project ${icon('arrow')}</button></div>`}</section>
@@ -182,7 +184,7 @@ function setupAside() {
 function renderEditor() {
   const p = state.project;
   const banner = isPublishing() ? `<div class="notice accent publishing-banner"><span class="spinner"></span><span>Publishing this saved version. Editing resumes when the operation finishes.</span><button class="text-btn" data-action="show-job">View progress</button></div>` : '';
-  if (state.tab === 'reports') return `${banner}${heading(1, 'Data sources', 'Add Power BI report or semantic model URLs and source-specific guidance.', `<button class="btn" data-action="add-report">${icon('plus')} Add source</button>`)}
+  if (state.tab === 'reports') return `${banner}${heading(1, 'Data sources', 'Add Power BI report or semantic model URLs. Fabric IQ provides the data answers.', `<button class="btn" data-action="add-report">${icon('plus')} Add source</button>`)}
     <div class="editor-layout"><div>${p.reports.length ? p.reports.map(renderReport).join('') : `<div class="empty-state source-empty"><span class="feature-icon large">${icon('source')}</span><h2>No data sources</h2><p>Copy the full report or semantic model URL from Power BI.</p><button class="btn primary" data-action="add-report">${icon('plus')} Add Power BI source</button></div>`}<div class="notice section-space">${icon('info')}<span>URL checks verify structure only, not data access or model contents. The agent uses the current user’s Power BI permissions.</span></div></div>${setupAside()}</div>
     ${stepFooter(null, 'overview', 'Name your agent')}`;
   if (state.tab === 'overview') return `${banner}${heading(2, 'Agent details', 'Set the name and description displayed in Microsoft 365 Copilot.')}

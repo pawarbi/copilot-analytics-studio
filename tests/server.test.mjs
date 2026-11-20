@@ -32,7 +32,7 @@ test('rejects foreign origins, cross-site requests and arbitrary static file rea
   const guide = await fetch(`${app.base}/agent-guide.js`);
   assert.equal(guide.status, 200);
   assert.match(guide.headers.get('content-type'), /javascript/);
-  for (const name of ['report_32_item.svg', 'semantic_model_32_item.svg', 'power_bi_32_color.svg']) {
+  for (const name of ['report_32_item.svg', 'semantic_model_32_item.svg', 'power_bi_32_color.svg', 'copilot_32_color.svg', 'fabric_32_color.svg']) {
     const image = await fetch(`${app.base}/icons/${name}`);
     assert.equal(image.status, 200);
     assert.equal(image.headers.get('content-type'), 'image/svg+xml');

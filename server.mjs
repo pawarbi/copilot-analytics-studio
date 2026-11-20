@@ -12,7 +12,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_BODY = 512 * 1024;
 const staticFiles = {
   '/': ['index.html', 'text/html; charset=utf-8'], '/app.js': ['app.js', 'text/javascript; charset=utf-8'], '/catalog.js': ['catalog.js', 'text/javascript; charset=utf-8'], '/agent-guide.js': ['agent-guide.js', 'text/javascript; charset=utf-8'], '/styles.css': ['styles.css', 'text/css; charset=utf-8'], '/favicon.svg': ['favicon.svg', 'image/svg+xml'],
-  ...Object.fromEntries(['report_32_item.svg', 'semantic_model_32_item.svg', 'power_bi_32_color.svg'].map(name => [`/icons/${name}`, [join('icons', name), 'image/svg+xml']]))
+  ...Object.fromEntries(['report_32_item.svg', 'semantic_model_32_item.svg', 'power_bi_32_color.svg', 'copilot_32_color.svg', 'fabric_32_color.svg'].map(name => [`/icons/${name}`, [join('icons', name), 'image/svg+xml']]))
 };
 
 export function createApp({ dataDir = join(ROOT, 'data'), toolkit = createToolkitRunner() } = {}) {

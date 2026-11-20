@@ -25,6 +25,43 @@ const stages = [
   }
 ];
 
+const sources = [
+  { title: 'Fabric IQ overview', url: 'https://learn.microsoft.com/fabric/iq/overview' },
+  { title: 'Fabric IQ in Microsoft 365 Copilot', url: 'https://learn.microsoft.com/fabric/iq/connectors/microsoft-365-copilot-overview' },
+  { title: 'Declarative agents', url: 'https://learn.microsoft.com/plugins/overview-declarative-agent' },
+  { title: 'Fabric data agent concepts', url: 'https://learn.microsoft.com/fabric/data-science/concept-data-agent' },
+  { title: 'Data agent sources and configuration', url: 'https://learn.microsoft.com/fabric/data-science/data-agent-add-datasources' },
+  { title: 'Publish a data agent to Microsoft Copilot', url: 'https://learn.microsoft.com/fabric/data-science/data-agent-microsoft-365-copilot' }
+];
+
+const differences = [
+  {
+    title: 'Agent definition', sources: [2, 3],
+    here: 'A Microsoft 365 declarative agent package. This app configures its instructions, skills and Fabric IQ action; Microsoft 365 Copilot provides the models and orchestration.',
+    dataAgent: 'A data agent item configured in a Fabric workspace, with its own data sources and instructions for conversational data analysis.'
+  },
+  {
+    title: 'Data coverage', sources: [1, 4],
+    here: 'Power BI reports and semantic models selected by URL. This app does not configure direct lakehouse, warehouse or KQL connections.',
+    dataAgent: 'Multiple Fabric source types, including lakehouses, warehouses, SQL and mirrored databases, KQL databases and Power BI semantic models.'
+  },
+  {
+    title: 'Query workflow', sources: [1, 3],
+    here: 'Copilot calls the Fabric IQ AskPowerBI action. A report can provide context for answering over its underlying semantic model; a model can also be targeted directly.',
+    dataAgent: 'The data agent selects a configured source, generates and validates a source-specific read query, then executes it. Core query languages include SQL, DAX and KQL.'
+  },
+  {
+    title: 'Customization', sources: [2, 4],
+    here: 'Core Copilot instructions, source-specific guidance and reusable SKILL.md procedures, packaged with the declarative agent.',
+    dataAgent: 'Agent instructions, schema selection and source-specific configuration. SQL and KQL sources support example question/query pairs. Semantic model guidance uses Prep for AI; example query pairs are not configured on that source in the data agent.'
+  },
+  {
+    title: 'Publishing and use', sources: [3, 5],
+    here: 'The current app publishes personally to Microsoft 365 Copilot with Agents Toolkit and exports project/package ZIPs. It does not create or publish a Fabric data agent item.',
+    dataAgent: 'Publish and share the Fabric item, optionally publish it to the Microsoft Copilot Agent Store, or integrate it with Copilot Studio and Foundry. It is not limited to the Fabric chat experience.'
+  }
+];
+
 let sequence = 0;
 
 export function defineAgentGuide(icon) {
@@ -62,7 +99,7 @@ export function defineAgentGuide(icon) {
         <header class="guide-heading"><span class="eyebrow">About declarative agents</span>
           <h2 id="${this.guideId}-title">What is a declarative agent?</h2>
           <p>A task-specific configuration of Microsoft 365 Copilot. You supply instructions, knowledge sources and actions; Microsoft provides the underlying models and orchestration.</p>
-          <p>Use one to apply the same business context across conversations, instead of including it in every prompt. This app configures Power BI sources, instructions and skills, then publishes the agent for use in Copilot.</p>
+          <p>Use one to apply the same business context across conversations, instead of including it in every prompt. This app configures Power BI sources, instructions and skills, then publishes the agent for use in Copilot. Data answering is powered by Fabric IQ.</p>
         </header>
         <div class="guide-walkthrough">
           <div class="guide-walkthrough-heading"><div><h3>How a request uses your selected data</h3><p>Example configuration. No live queries or results.</p></div><button type="button" class="btn small" data-guide-play>Play example</button></div>
@@ -77,14 +114,14 @@ export function defineAgentGuide(icon) {
               <span class="flow-guidance">${icon('book')}<span>Comparison and<br>analysis procedures</span></span>
             </div>
             <div class="flow-artifacts">
-              <div class="flow-artifacts-title"><img src="/icons/power_bi_32_color.svg" width="20" height="20" alt="">Selected Power BI artifacts</div>
+              <div class="flow-artifacts-title"><img src="/icons/fabric_32_color.svg" width="24" height="24" alt="Microsoft Fabric"><span><strong>Fabric IQ</strong><small>Data answers over selected Power BI artifacts</small></span></div>
               <span class="flow-column-label flow-reports-label">Reports</span><span class="flow-column-label flow-models-label">Semantic models</span>
               ${['Sales', 'Finance', 'Operations'].map((name, index) => `
                 <div class="flow-node flow-report flow-row-${index} tone-source" data-flow-node="report-${index}" data-flow-stage="2" data-flow-route="${index === 0}"><img src="/icons/report_32_item.svg" width="28" height="28" alt="Power BI report"><strong>${name}</strong><span>Report</span></div>
                 <div class="flow-node flow-model flow-row-${index} tone-source" data-flow-node="model-${index}" data-flow-stage="2" data-flow-route="${index === 0}"><img src="/icons/semantic_model_32_item.svg" width="28" height="28" alt="Power BI semantic model"><strong>${name}</strong><span>Semantic model</span></div>`).join('')}
             </div>
             <div class="flow-node flow-answer tone-expertise" data-flow-node="answer" data-flow-stage="3">
-              <span class="flow-node-icon">${icon('file')}</span><strong>Answer</strong><p>Figures, reporting period and source references</p><span class="flow-answer-source">${icon('check')}Sales model</span>
+              <span class="flow-node-icon"><img src="/icons/copilot_32_color.svg" width="32" height="32" alt="Microsoft Copilot"></span><strong>Copilot answer</strong><p>Figures, reporting period and source references</p><span class="flow-answer-source">${icon('check')}Sales model</span>
             </div>
           </div>
           <p class="flow-grounding-note">${icon('source')}<span>One request follows the Sales route in this example. The other configured sources remain available. Instructions and skills guide retrieval and the response.</span></p>
@@ -95,6 +132,17 @@ export function defineAgentGuide(icon) {
           </div>
         </div>
         <footer class="guide-footer"><p>Configuration does not train a new model or grant data access. Licensing and tenant policies still apply. Validate the agent’s answers against known results.</p><a href="https://learn.microsoft.com/plugins/overview-declarative-agent" target="_blank" rel="noopener noreferrer">Microsoft documentation ${icon('arrow')}</a></footer>
+        <section class="agent-comparison" aria-labelledby="${this.guideId}-comparison-title">
+          <header class="comparison-heading"><span class="eyebrow">Choosing an approach</span><h2 id="${this.guideId}-comparison-title">How is this different from Fabric Data Agent?</h2>
+            <p>This app builds a Microsoft 365 declarative agent that uses Fabric IQ for Power BI data answers. Fabric Data Agent is a separate Fabric item, also part of Fabric IQ. Both can be used from Microsoft 365 Copilot. <a href="${sources[0].url}" target="_blank" rel="noopener noreferrer" aria-label="Fabric IQ overview, comparison source 1">[1]</a></p>
+          </header>
+          <ol class="comparison-list">${differences.map((difference, index) => `<li>
+            <h3><span class="comparison-number" aria-hidden="true">0${index + 1}</span>${difference.title}<span class="comparison-citations">${difference.sources.map(source => `<a href="${sources[source].url}" target="_blank" rel="noopener noreferrer" aria-label="${sources[source].title}, source for ${difference.title.toLowerCase()}">[${source + 1}]</a>`).join(' ')}</span></h3>
+            <div class="comparison-pair"><div><h4>Agent built with this app</h4><p>${difference.here}</p></div><div><h4>Fabric Data Agent</h4><p>${difference.dataAgent}</p></div></div>
+          </li>`).join('')}</ol>
+          <p class="comparison-scope">This comparison describes this app's current Fabric IQ MCP integration, not every declarative agent. Both approaches use the requesting user's data permissions; publishing an agent does not grant access to its underlying sources.</p>
+          <footer class="comparison-references"><span>Microsoft Learn sources · Reviewed 19 November 2026</span><div>${sources.map((source, index) => `<a href="${source.url}" target="_blank" rel="noopener noreferrer">[${index + 1}] ${source.title} ${icon('arrow')}</a>`).join('')}</div></footer>
+        </section>
       </section>`;
       this.addEventListener('click', this.onClick);
       this.addEventListener('keydown', this.onKeydown);

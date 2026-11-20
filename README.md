@@ -2,10 +2,13 @@
 
 A local web application for creating and personally publishing Microsoft 365 declarative agents backed by Power BI sources.
 
+Data answering is powered by **Fabric IQ** through the configured Power BI MCP action. Microsoft 365 Copilot provides the conversational runtime and composes the final answer. This application does not create Fabric data agent items.
+
 ## Features
 
 - Configure Power BI reports and semantic models.
 - Explain artifact grounding with one animated request routed through agent guidance to a relevant Power BI report and semantic model, with other configured sources shown alongside.
+- Compare this app with Fabric Data Agent across five documented differences, with Microsoft Learn citations.
 - Edit agent instructions and use starter templates, behavior presets and reusable skills.
 - Import SKILL.md files and edit supporting reference material.
 - Preview generated files and export project source.
@@ -42,4 +45,4 @@ This is a community project, not an official Microsoft product.
 
 ## Icon attribution
 
-The educational diagram uses unmodified Power BI, report and semantic model icons from [Microsoft's official Fabric icon collection](https://learn.microsoft.com/fabric/fundamentals/icons). These icons identify Microsoft products and artifacts, not this application. The original package license is included in `public/icons/LICENSE`.
+The educational diagram uses unmodified Microsoft Copilot, Fabric, Power BI, report and semantic model icons from [Microsoft's official Fabric icon collection](https://learn.microsoft.com/fabric/fundamentals/icons). These icons identify Microsoft products and artifacts, not this application. The original package license is included in `public/icons/LICENSE`.

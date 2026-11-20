@@ -4,7 +4,7 @@ import { mkdir, readFile, writeFile, readdir, rename, stat, rm, copyFile } from 
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { zipSync, strToU8 } from 'fflate';
-import { InputError, newProject, normalizeProject, parsePowerBiUrl, validateProject, generateFiles, parseEnvironment } from './lib/generator.mjs';
+import { InputError, newProject, normalizeProject, parsePowerBiUrl, validateProject, generateFiles, generateInstallableFiles, parseEnvironment } from './lib/generator.mjs';
 import { createToolkitRunner, parseAccount, redact } from './lib/toolkit.mjs';
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
@@ -208,7 +208,7 @@ export function createApp({ dataDir = join(ROOT, 'data'), toolkit = createToolki
           return json(res, 201, project);
         } finally { creatingProject = false; }
       }
-      const match = /^\/api\/projects\/([0-9a-f-]+)(?:\/(files|check|download|draft|package|publish|sharing))?$/.exec(url.pathname);
+      const match = /^\/api\/projects\/([0-9a-f-]+)(?:\/(files|check|download|draft|installable|package|publish|sharing))?$/.exec(url.pathname);
       if (!match) throw new InputError('Not found.', 404);
       const [, id, action] = match;
       if (!action && req.method === 'GET') return json(res, 200, await loadProject(id));
@@ -243,6 +243,11 @@ export function createApp({ dataDir = join(ROOT, 'data'), toolkit = createToolki
         const files = generateFiles(project, await existingEnv(id, project.deploymentScope));
         const zip = zipSync(Object.fromEntries(Object.entries(files).map(([name, value]) => [name, typeof value === 'string' ? strToU8(value) : value])));
         res.writeHead(200, { 'Content-Type': 'application/zip', 'Content-Disposition': 'attachment; filename="analytics-agent-source.zip"' }); return res.end(zip);
+      }
+      if (action === 'installable' && req.method === 'GET') {
+        const files = generateInstallableFiles(project);
+        const zip = zipSync(Object.fromEntries(Object.entries(files).map(([name, value]) => [name, typeof value === 'string' ? strToU8(value) : value])));
+        res.writeHead(200, { 'Content-Type': 'application/zip', 'Content-Disposition': 'attachment; filename="fida-installable-agent.zip"' }); return res.end(zip);
       }
       if (action === 'package' && req.method === 'GET') {
         if (!project.deployment) throw new InputError('Publish this agent before downloading its provisioned app package.', 409);

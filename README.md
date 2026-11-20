@@ -17,6 +17,7 @@ Data answering is powered by **Fabric IQ** through the configured Power BI MCP a
 - Edit agent instructions and use starter templates, behavior presets and reusable skills.
 - Import SKILL.md files and edit supporting reference material.
 - Preview generated files and export project source.
+- Download a standalone installable ZIP for manual Teams custom-app upload, without FIDA publishing permissions or local CLI commands.
 - Validate and publish personal or shareable agents using Microsoft 365 Agents Toolkit.
 - Grant or remove chat access for specific users/groups on shareable deployments, and copy the returned sharing link.
 - Download incomplete drafts as ZIP backups and import their `fida-project.json` in a later session. Restoring creates a new draft and does not reconnect to an existing published agent.
@@ -56,7 +57,17 @@ The preview limits each process to 24 sessions, 10 projects per session, and one
 
 Render's [free-service limits](https://render.com/docs/free), [custom domains](https://render.com/docs/custom-domains) and [Blueprint documentation](https://render.com/docs/infrastructure-as-code) describe current hosting behavior. No Render service is created merely by cloning this repository.
 
-## Publishing and sharing
+## Manual upload without hosted publishing consent
+
+In **Review & publish**, complete the required fields, select a deployment mode, and choose **Download installable ZIP**. This creates `fida-installable-agent.zip` with `manifest.json` at the ZIP root, a resolved app ID, inlined agent instructions, icons, the Fabric IQ MCP action and any configured skills. No publishing API or additional publishing-consent flow is invoked.
+
+In Teams, open **Apps > Manage your apps > Upload an app > Upload a custom app**, select the ZIP **without extracting it**, and follow the installation dialog. This is different from **Submit an app to your org**, which requests organization approval. Tenant policies still apply, including [advanced package upload controls](https://learn.microsoft.com/copilot/manage/configure-copilot-advanced-package-uploads) for agents with actions/MCP, source permissions and licensing. Package validation does not prove that the agent is installed, that this tenant permits upload, or that its Power BI runtime queries succeed.
+
+**Choose the right ZIP:** the installable ZIP is for Teams upload; **Export source** is a Toolkit project with `appPackage` and `env` folders, not an uploadable app; **Download draft ZIP** is a backup to restore into FIDA. Do not upload source or draft ZIPs in Teams.
+
+Manual upload has its own app identity, stable while downloading from the same FIDA project, and does not inherit direct-publishing deployment IDs or sharing grants. Direct-publishing Personal/Shareable selections do not grant an audience to manual uploads. Keep the installable ZIP for future manual updates and increment the package version while preserving its manifest app ID. A restored draft creates a new project and a new manual app identity. FIDA does not track the installation or sharing of manually uploaded packages.
+
+## Direct publishing and sharing
 
 In **Review & publish**, explicitly choose **Personal — just me** or **Shareable — selected people**, then confirm publishing. Both radio options are visible; neither is selected for a new project. Your choice is saved, and existing projects retain their saved mode. The modes use separate workspaces and published identities. Existing personal projects continue using their original workspace. Switching the draft mode does not delete or revoke access to either published agent.
 

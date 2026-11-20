@@ -71,9 +71,37 @@ test('does not publish or export new projects without a deployment choice', asyn
   const exportResult = await app.request(`/projects/${project.id}/download`);
   assert.equal(exportResult.status, 400);
   assert.match((await exportResult.json()).error, /Choose Personal or Shareable/);
+  assert.equal((await app.request(`/projects/${project.id}/installable`)).status, 400);
   const publish = await app.request(`/projects/${project.id}/publish`, { method: 'POST', body: { confirmPublish: true, scope: 'personal', revision: project.revision } });
   assert.equal(publish.status, 400);
   assert.equal(app.state.calls.some(args => args[0] === 'provision'), false);
+});
+
+test('exports a standalone installable ZIP without provisioning or unresolved Toolkit references', async t => {
+  const app = await testApp(); t.after(app.close);
+  let project = await savedProject(app);
+  const response = await app.request(`/projects/${project.id}/installable`);
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get('content-disposition'), /fida-installable-agent\.zip/);
+  const files = unzipSync(new Uint8Array(await response.arrayBuffer()));
+  const manifest = JSON.parse(strFromU8(files['manifest.json']));
+  const agent = JSON.parse(strFromU8(files[manifest.copilotAgents.declarativeAgents[0].file]));
+  assert.equal(manifest.id, project.id);
+  assert.ok(files[manifest.icons.color]); assert.ok(files[manifest.icons.outline]);
+  assert.ok(files[agent.actions[0].file]);
+  assert.ok(files[`${agent.agent_skills[0].folder}/SKILL.md`]);
+  assert.ok(files[`${agent.agent_skills[0].folder}/references/dax-recipes.md`]);
+  assert.match(agent.instructions, /Sales Amount|Sales/);
+  for (const [name, content] of Object.entries(files)) {
+    assert.equal(name.startsWith('appPackage/') || name.startsWith('env/') || name.endsWith('.yml'), false);
+    if (!name.endsWith('.png')) assert.doesNotMatch(strFromU8(content), /\$\{\{|\$\[\s*file\s*\(/);
+  }
+  assert.equal((await app.json(`/projects/${project.id}`)).deployment, null);
+  project = await app.json(`/projects/${project.id}`, { method: 'PUT', body: { ...project, version: '1.0.1' } });
+  const updated = unzipSync(new Uint8Array(await (await app.request(`/projects/${project.id}/installable`)).arrayBuffer()));
+  assert.equal(JSON.parse(strFromU8(updated['manifest.json'])).id, manifest.id);
+  assert.equal(JSON.parse(strFromU8(updated['manifest.json'])).version, '1.0.1');
+  assert.equal(app.state.calls.every(args => args[0] === 'auth' && args[1] === 'list'), true);
 });
 
 test('parses typed GUIDs and preserves semantic model routing through save and export', async t => {
@@ -110,6 +138,9 @@ test('publishes only with confirmation, locks the active draft, preserves identi
   assert.equal(completed.result.deployment.agentId, `${titleId}.analyticsAgent`);
   const originalPackage = Buffer.from(await (await app.request(`/projects/${project.id}/package`)).arrayBuffer());
   project = await app.json(`/projects/${project.id}`);
+  const manual = unzipSync(new Uint8Array(await (await app.request(`/projects/${project.id}/installable`)).arrayBuffer()));
+  assert.notEqual(JSON.parse(strFromU8(manual['manifest.json'])).id, project.deployment.teamsAppId);
+  assert.deepEqual((await app.json(`/projects/${project.id}`)).deployments, project.deployments);
   project.skills = []; project.name = 'Updated sales analyst';
   project = await app.json(`/projects/${project.id}`, { method: 'PUT', body: project });
   app.state.failPublish = true;

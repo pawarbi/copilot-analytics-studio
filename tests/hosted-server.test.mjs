@@ -115,6 +115,8 @@ test('hosted publishing connects downstream permissions before creating any clou
   const user = await app.session(); await user.signIn('alice');
   let project = await user.json('/api/projects', { method: 'POST', body: {} });
   project = await user.json(`/api/projects/${project.id}`, { method: 'PUT', body: { ...validProject(), revision: project.revision } });
+  assert.equal((await user.call(`/api/projects/${project.id}/installable`)).status, 200);
+  assert.equal(app.clients[0].requests.length, 1, 'Manual package export must not request publishing consent.');
   const confirmation = { method: 'POST', body: { confirmPublish: true, scope: 'personal', revision: project.revision } };
   let { redirect } = await user.json(`/api/projects/${project.id}/publish`, confirmation);
   assert.ok(redirect);

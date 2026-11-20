@@ -1,0 +1,16 @@
+node_modules/
+data/
+test-results/
+*.log
+.env
+.env.*
+!.env.example
+.auth/
+.azure/
+.atk/
+.cache/
+*.pem
+*.key
+*.pfx
+*.p12
+*.zip

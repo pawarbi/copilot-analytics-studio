@@ -1,0 +1,1 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><style>:root{--cp-text:#242424;--cp-surface:#ffffff}@media(prefers-color-scheme:dark){:root{--cp-text:#dedede;--cp-surface:#292929}}.bg{fill:var(--cp-text)}.bars{fill:var(--cp-surface)}</style><rect class="bg" width="40" height="40" rx="10"/><path class="bars" d="M10 22h5v9h-5zm8-8h5v17h-5zm8-6h5v23h-5z"/></svg>

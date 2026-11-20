@@ -5,7 +5,7 @@ A local web application for creating and personally publishing Microsoft 365 dec
 ## Features
 
 - Configure Power BI reports and semantic models.
-- Explain declarative agents with an interactive walkthrough on the sign-in page and in-app help.
+- Explain artifact grounding with an animated request flow through agent guidance, three example Power BI reports and their semantic models.
 - Edit agent instructions and use starter templates, behavior presets and reusable skills.
 - Import SKILL.md files and edit supporting reference material.
 - Preview generated files and export project source.
@@ -39,3 +39,7 @@ Browser tests require Microsoft Edge. Unit and browser tests use an isolated Too
 This version runs locally and uses the Toolkit account on the same computer. It is not configured for shared public hosting. Per-user hosted authentication, Render deployment and published-agent querying are not implemented.
 
 This is a community project, not an official Microsoft product.
+
+## Icon attribution
+
+The educational diagram uses unmodified Power BI, report and semantic model icons from [Microsoft's official Fabric icon collection](https://learn.microsoft.com/fabric/fundamentals/icons). These icons identify Microsoft products and artifacts, not this application. The original package license is included in `public/icons/LICENSE`.

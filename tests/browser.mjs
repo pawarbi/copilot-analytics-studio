@@ -39,12 +39,27 @@ try {
   await checkPalette(page);
   const guide = page.locator('.welcome-guide agent-guide');
   await guide.getByRole('heading', { name: 'What is a declarative agent?', exact: true }).waitFor();
+  assert.equal(await guide.locator('.flow-report').count(), 3);
+  assert.equal(await guide.locator('.flow-model').count(), 3);
+  assert.equal(await guide.locator('.flow-wire').count(), 10, 'The diagram must connect the request, guidance, all three report/model pairs and the answer.');
+  assert.equal(await guide.locator('.grounding-map img').evaluateAll(images => images.every(image => image.complete && image.naturalWidth > 0)), true, 'Official Power BI icons must load.');
   const requestsBeforeGuide = apiRequests.length;
   await page.clock.install();
   await guide.getByRole('button', { name: 'Play example', exact: true }).click();
+  const firstDot = guide.locator('.flow-edge.is-active .flow-dot').first();
+  assert.equal(await firstDot.evaluate(dot => getComputedStyle(dot).animationPlayState), 'running');
+  const beforeMotion = await firstDot.evaluate(dot => getComputedStyle(dot).offsetDistance);
+  await new Promise(resolve => setTimeout(resolve, 200));
+  assert.notEqual(await firstDot.evaluate(dot => getComputedStyle(dot).offsetDistance), beforeMotion, 'The request circle must actually move along its connector.');
   await page.clock.runFor(3600);
   assert.match(await guide.getByRole('tab', { selected: true }).textContent(), /Instructions & skills/);
   await guide.getByRole('button', { name: 'Pause example', exact: true }).click();
+  const pausedDots = guide.locator('.flow-edge.is-active .flow-dot');
+  assert.equal(await pausedDots.count(), 3, 'Guidance must fan out to the three configured reports.');
+  assert.equal(await pausedDots.first().evaluate(dot => getComputedStyle(dot).animationPlayState), 'paused');
+  const pausedPosition = await pausedDots.first().evaluate(dot => getComputedStyle(dot).offsetDistance);
+  await new Promise(resolve => setTimeout(resolve, 200));
+  assert.equal(await pausedDots.first().evaluate(dot => getComputedStyle(dot).offsetDistance), pausedPosition, 'Pausing must hold the processing circles in place.');
   await page.clock.runFor(7200);
   assert.match(await guide.getByRole('tab', { selected: true }).textContent(), /Instructions & skills/, 'Pausing must stop the walkthrough.');
   await guide.getByRole('tab', { selected: true }).focus();
@@ -58,6 +73,13 @@ try {
   await guide.getByRole('button', { name: 'Replay example', exact: true }).waitFor();
   assert.equal(apiRequests.length, requestsBeforeGuide, 'The illustration must not query data or change the account.');
   await page.screenshot({ path: 'test-results/sign-in.png', fullPage: true });
+  for (const width of [320, 390, 768, 1440]) {
+    await page.setViewportSize({ width, height: 1000 });
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true, `The front-page flow must fit a ${width}px viewport.`);
+    const map = guide.locator('.grounding-map');
+    assert.equal(await map.evaluate(element => element.scrollWidth <= element.clientWidth + 1), true, 'The grounding map must fit its container.');
+    if (width === 390) await map.screenshot({ path: 'test-results/mobile-grounding-map.png' });
+  }
   await page.getByRole('button', { name: 'How it works', exact: true }).click();
   await page.getByRole('dialog', { name: 'About declarative agents', exact: true }).waitFor();
   const guideDialog = page.locator('#guide-dialog');
@@ -67,7 +89,7 @@ try {
   assert.equal(new Set(guideIds).size, guideIds.length, 'Guide instances must have distinct accessible IDs.');
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await dialogGuide.getByRole('button', { name: 'Play example', exact: true }).click();
-  assert.equal(await dialogGuide.getByRole('tab', { selected: true }).evaluate(element => getComputedStyle(element, '::before').animationName), 'none');
+  assert.equal(await dialogGuide.locator('.flow-edge.is-active .flow-dot').first().evaluate(element => getComputedStyle(element).animationName), 'none');
   await page.keyboard.press('Escape');
   await dialogGuide.locator('[data-guide-play]').filter({ hasText: 'Play example' }).waitFor({ state: 'attached' });
   await page.clock.runFor(4000);
@@ -116,6 +138,7 @@ try {
   await page.locator('.appbar').getByRole('button', { name: 'How it works', exact: true }).click();
   await dialogGuide.getByRole('tab', { name: /Power BI action/ }).click();
   await page.screenshot({ path: 'test-results/agent-guide-dark.png', fullPage: true });
+  await dialogGuide.locator('.grounding-map').screenshot({ path: 'test-results/grounding-map-dark.png' });
   await page.getByRole('button', { name: 'Close agent guide', exact: true }).click();
   await page.getByRole('button', { name: 'Switch to light theme', exact: true }).click();
   await page.locator('[data-create-pack="general"]').click();

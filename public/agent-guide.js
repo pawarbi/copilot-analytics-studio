@@ -3,25 +3,25 @@ const stages = [
     title: 'User question', icon: 'people', tone: 'source',
     detail: 'The user selects the published agent in Microsoft 365 Copilot and asks a business question.',
     label: 'Example prompt',
-    example: 'Which territories had the highest sales last quarter, and what was each territory’s share of total sales?'
+    example: 'How did sales, gross margin and order backlog change last quarter?'
   },
   {
     title: 'Instructions & skills', icon: 'pen', tone: 'rules',
     detail: 'The configured instructions define source selection, metric conventions and response requirements. Relevant skills provide task-specific guidance.',
     label: 'Configured guidance',
-    example: 'Use the approved sales source. Compare the last complete quarter. Calculate share against all eligible territories, not just the displayed rows.'
+    example: 'Use the configured sources and governed metrics. Compare the last complete quarter. Apply the relevant comparison skill and identify the reporting period.'
   },
   {
     title: 'Power BI action', icon: 'source', tone: 'source',
-    detail: 'The agent calls Fabric IQ’s AskPowerBI action with the selected source ID, question and context. Data access uses the current user’s Power BI permissions.',
+    detail: 'The agent selects relevant configured artifacts and calls Fabric IQ’s AskPowerBI action. Reports use their underlying semantic models; a configured model can also be queried directly. Existing Power BI permissions apply.',
     label: 'Data request',
-    example: 'Retrieve a territory ranking and the overall sales denominator from the configured report or semantic model.'
+    example: 'The three branches show an example source configuration, not three mandatory queries. Report-to-model arrows show the underlying data relationships.'
   },
   {
     title: 'Response', icon: 'file', tone: 'expertise',
-    detail: 'Copilot uses the action’s results and configured response instructions to produce an answer. Its underlying models and orchestration are provided by Microsoft.',
+    detail: 'Copilot composes the answer using results from the selected artifacts, guided by the instructions and relevant skills. The data comes from Power BI, not just the model’s general knowledge.',
     label: 'Expected format',
-    example: 'A territory ranking with sales, share of total, the reporting period and a source reference. Check the results against known answers.'
+    example: 'A comparison of sales, gross margin and backlog, with the reporting period and source references. Validate the figures against known results.'
   }
 ];
 
@@ -64,13 +64,30 @@ export function defineAgentGuide(icon) {
           <p>A task-specific configuration of Microsoft 365 Copilot. You supply instructions, knowledge sources and actions; Microsoft provides the underlying models and orchestration.</p>
           <p>Use one to apply the same business context across conversations, instead of including it in every prompt. This app configures Power BI sources, instructions and skills, then publishes the agent for use in Copilot.</p>
         </header>
-        <div class="guide-inputs">
-          <div class="tone-source"><span class="feature-icon">${icon('source')}</span><div><h3>Power BI sources</h3><p>Specify the reports and semantic models the agent should use.</p></div></div>
-          <div class="tone-rules"><span class="feature-icon">${icon('pen')}</span><div><h3>Business instructions</h3><p>Define metric conventions, date rules and response requirements.</p></div></div>
-          <div class="tone-expertise"><span class="feature-icon">${icon('book')}</span><div><h3>Reusable skills</h3><p>Configure procedures for rankings, variances and period comparisons.</p></div></div>
-        </div>
         <div class="guide-walkthrough">
-          <div class="guide-walkthrough-heading"><div><h3>Example: a Power BI question</h3><p>Illustration only. No live queries or results.</p></div><button type="button" class="btn small" data-guide-play>Play example</button></div>
+          <div class="guide-walkthrough-heading"><div><h3>How a request uses your selected data</h3><p>Example configuration. No live queries or results.</p></div><button type="button" class="btn small" data-guide-play>Play example</button></div>
+          <div class="grounding-map" role="group" aria-label="Request flows through agent guidance to three Power BI reports and their semantic models, then to a grounded answer">
+            <svg class="flow-connections" aria-hidden="true" focusable="false"></svg>
+            <div class="flow-node flow-request tone-source" data-flow-node="request" data-flow-stage="0">
+              <span class="flow-node-icon">${icon('people')}</span><strong>Request</strong><p>How did sales, margin and backlog change last quarter?</p>
+            </div>
+            <div class="flow-node flow-agent tone-rules" data-flow-node="agent" data-flow-stage="1">
+              <span class="flow-node-label">Declarative agent</span><strong>Instructions + skills</strong>
+              <span class="flow-guidance">${icon('pen')}<span>Sources, metrics<br>and date rules</span></span>
+              <span class="flow-guidance">${icon('book')}<span>Comparison and<br>analysis procedures</span></span>
+            </div>
+            <div class="flow-artifacts">
+              <div class="flow-artifacts-title"><img src="/icons/power_bi_32_color.svg" width="20" height="20" alt="">Selected Power BI artifacts</div>
+              <span class="flow-column-label flow-reports-label">Reports</span><span class="flow-column-label flow-models-label">Semantic models</span>
+              ${['Sales', 'Finance', 'Operations'].map((name, index) => `
+                <div class="flow-node flow-report flow-row-${index} tone-source" data-flow-node="report-${index}" data-flow-stage="2"><img src="/icons/report_32_item.svg" width="28" height="28" alt="Power BI report"><strong>${name}</strong><span>Report</span></div>
+                <div class="flow-node flow-model flow-row-${index} tone-source" data-flow-node="model-${index}" data-flow-stage="2"><img src="/icons/semantic_model_32_item.svg" width="28" height="28" alt="Power BI semantic model"><strong>${name}</strong><span>Semantic model</span></div>`).join('')}
+            </div>
+            <div class="flow-node flow-answer tone-expertise" data-flow-node="answer" data-flow-stage="3">
+              <span class="flow-node-icon">${icon('file')}</span><strong>Answer</strong><p>Figures, reporting period and source references</p><span class="flow-answer-source">${icon('check')}Selected data</span>
+            </div>
+          </div>
+          <p class="flow-grounding-note">${icon('source')}<span>The selected artifacts supply the data. Instructions and skills guide retrieval and the response. Only relevant sources are queried.</span></p>
           <div class="guide-track" role="tablist" aria-label="Example stages">${stages.map((stage, index) => `<button type="button" role="tab" class="guide-step tone-${stage.tone}" id="${this.guideId}-step-${index}" data-guide-step="${index}" aria-controls="${this.guideId}-panel" aria-selected="${index === this.step}" tabindex="${index === this.step ? 0 : -1}"><span class="guide-step-icon">${icon(stage.icon)}</span><span><small>${index + 1}</small>${stage.title}</span></button>`).join('')}</div>
           <div class="guide-detail" id="${this.guideId}-panel" role="tabpanel" tabindex="0">
             <div class="guide-explanation" aria-live="polite" aria-atomic="true"><span class="eyebrow" data-guide-position></span><h4 data-guide-title></h4><p data-guide-detail></p></div>
@@ -84,6 +101,8 @@ export function defineAgentGuide(icon) {
       document.addEventListener('visibilitychange', this.onHidden);
       this.dialog = this.closest('dialog');
       this.dialog?.addEventListener('close', this.onClose);
+      this.resizeObserver = new ResizeObserver(() => this.drawConnections());
+      this.resizeObserver.observe(this.querySelector('.grounding-map'));
       this.update();
     }
 
@@ -93,6 +112,59 @@ export function defineAgentGuide(icon) {
       this.removeEventListener('keydown', this.onKeydown);
       document.removeEventListener('visibilitychange', this.onHidden);
       this.dialog?.removeEventListener('close', this.onClose);
+      this.resizeObserver?.disconnect();
+    }
+
+    drawConnections() {
+      const map = this.querySelector('.grounding-map');
+      const bounds = map.getBoundingClientRect();
+      if (!bounds.width || !bounds.height) return;
+      const vertical = getComputedStyle(map).getPropertyValue('--flow-vertical').trim() === '1';
+      const point = (name, side) => {
+        const box = map.querySelector(`[data-flow-node="${name}"]`).getBoundingClientRect();
+        return {
+          x: (side === 'left' ? box.left : side === 'right' ? box.right : box.left + box.width / 2) - bounds.left,
+          y: (side === 'top' ? box.top : side === 'bottom' ? box.bottom : box.top + box.height / 2) - bounds.top
+        };
+      };
+      const connect = (from, to, stage, phase = '') => {
+        let a = point(from, 'right'), b = point(to, 'left'), d;
+        if (!vertical) {
+          const middle = (a.x + b.x) / 2;
+          d = `M ${a.x} ${a.y} C ${middle} ${a.y}, ${middle} ${b.y}, ${b.x} ${b.y}`;
+        } else if (from === 'request') {
+          a = point(from, 'bottom'); b = point(to, 'top');
+          d = `M ${a.x} ${a.y} L ${b.x} ${b.y}`;
+        } else if (from === 'agent') {
+          a = point(from, 'bottom');
+          const turn = a.y + 20;
+          d = `M ${a.x} ${a.y} V ${turn} H 3 V ${b.y} H ${b.x}`;
+        } else if (to === 'answer') {
+          b = point(to, 'top');
+          d = `M ${a.x} ${a.y} H ${bounds.width - 3} V ${b.y - 20} H ${b.x} V ${b.y}`;
+        } else {
+          d = `M ${a.x} ${a.y} H ${b.x}`;
+        }
+        return { stage, phase, d };
+      };
+      const edges = [connect('request', 'agent', 0)];
+      for (let index = 0; index < 3; index++) {
+        edges.push(connect('agent', `report-${index}`, 1));
+        edges.push(connect(`report-${index}`, `model-${index}`, 2, 'read'));
+        edges.push(connect(`model-${index}`, 'answer', 2, 'return'));
+      }
+      const svg = map.querySelector('.flow-connections');
+      svg.setAttribute('viewBox', `0 0 ${bounds.width} ${bounds.height}`);
+      svg.innerHTML = `<defs><marker id="${this.guideId}-arrow" viewBox="0 0 8 8" refX="8" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 1 1 L 7 4 L 1 7" class="flow-arrowhead"/></marker></defs>${edges.map(edge => `<g class="flow-edge ${edge.phase}" data-flow-stage="${edge.stage}"><path class="flow-wire" d="${edge.d}" marker-end="url(#${this.guideId}-arrow)"/><circle class="flow-dot" r="4"/></g>`).join('')}`;
+      svg.querySelectorAll('.flow-dot').forEach((dot, index) => { dot.style.offsetPath = `path("${edges[index].d}")`; });
+      this.updateFlow();
+    }
+
+    updateFlow() {
+      for (const element of this.querySelectorAll('[data-flow-stage]')) {
+        element.classList.toggle('is-active', Number(element.dataset.flowStage) === this.step);
+        element.classList.toggle('is-complete', Number(element.dataset.flowStage) < this.step);
+      }
     }
 
     select(index) {
@@ -128,6 +200,7 @@ export function defineAgentGuide(icon) {
     update() {
       const stage = stages[this.step];
       this.querySelector('.agent-guide').classList.toggle('is-playing', this.playing);
+      this.updateFlow();
       for (const button of this.querySelectorAll('[data-guide-step]')) {
         const selected = Number(button.dataset.guideStep) === this.step;
         button.setAttribute('aria-selected', String(selected));
